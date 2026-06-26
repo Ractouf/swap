@@ -1,0 +1,15 @@
+{
+  "display": {
+    "icon": { "id": "minecraft:chest" },
+    "title": { "text": "Pandora's Chest" },
+    "description": { "text": "Whatever's in there, it's probably not what the label says." },
+    "frame": "task",
+    "show_toast": true,
+    "announce_to_chat": true,
+    "hidden": false
+  },
+  "parent": "randomdrops:root",
+  "criteria": {
+    "chest_opened": { "trigger": "minecraft:impossible" }
+  }
+}

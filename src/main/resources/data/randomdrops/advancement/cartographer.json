@@ -1,0 +1,15 @@
+{
+  "display": {
+    "icon": { "id": "minecraft:filled_map" },
+    "title": { "text": "Cartographer of Chaos" },
+    "description": { "text": "You're starting to see a pattern. There is no pattern." },
+    "frame": "goal",
+    "show_toast": true,
+    "announce_to_chat": true,
+    "hidden": false
+  },
+  "parent": "randomdrops:curious_mind",
+  "criteria": {
+    "discovery_200": { "trigger": "minecraft:impossible" }
+  }
+}

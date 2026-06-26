@@ -1,0 +1,15 @@
+{
+  "display": {
+    "icon": { "id": "minecraft:diamond" },
+    "title": { "text": "Wrong Ore, Right Result" },
+    "description": { "text": "You mined diamond ore. You did not get diamonds. This is fine." },
+    "frame": "task",
+    "show_toast": true,
+    "announce_to_chat": true,
+    "hidden": false
+  },
+  "parent": "randomdrops:root",
+  "criteria": {
+    "ore_non_ore": { "trigger": "minecraft:impossible" }
+  }
+}

@@ -1,12 +1,14 @@
 package com.randomdrops.mapping;
 
 import com.mojang.serialization.Codec;
+import com.randomdrops.advancement.AdvancementHelper;
 import net.minecraft.core.component.DataComponents;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.resources.Identifier;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerLevel;
+import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.util.datafix.DataFixTypes;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
@@ -69,7 +71,7 @@ public class DropMappingState extends SavedData {
      * Called on pickup: reads the composite tag, records the discovery, strips the tag.
      * Returns true if a new discovery was recorded.
      */
-    public static boolean tryRecordAndStrip(ItemStack stack, MinecraftServer server) {
+    public static boolean tryRecordAndStrip(ItemStack stack, MinecraftServer server, ServerPlayer player) {
         CustomData data = stack.get(DataComponents.CUSTOM_DATA);
         if (data == null || data.isEmpty()) return false;
         CompoundTag tag = data.copyTag();
@@ -77,20 +79,82 @@ public class DropMappingState extends SavedData {
 
         String compositeKey = tag.getStringOr(TAG_KEY, "");
         if (compositeKey.isEmpty()) return false;
-        if (compositeKey.split("\\|").length != 3) return false;
+        String[] parts = compositeKey.split("\\|", 3);
+        if (parts.length != 3) return false;
 
-        DropMappingState.get(server).markDiscovered(compositeKey);
+        DropMappingState state = DropMappingState.get(server);
 
-        // Strip tag so the item stacks normally in inventory
+        // Check if this is a "normal" drop (seed happened to map item to itself)
+        Identifier droppedId = Identifier.tryParse(parts[2]);
+        if (droppedId != null) {
+            Item replacement = DropMappingGenerator.getItem(state.worldSeed, droppedId);
+            Identifier replacementId = BuiltInRegistries.ITEM.getKey(replacement);
+            if (droppedId.equals(replacementId)) {
+                if (player != null) AdvancementHelper.award(player, "normal_loot", "got_normal");
+                stripTag(stack);
+                return false;
+            }
+        }
+
+        boolean isNew = state.markDiscovered(compositeKey);
+        if (isNew && player != null) {
+            state.fireAdvancementTriggers(player, compositeKey);
+        }
+
+        stripTag(stack);
+        return isNew;
+    }
+
+    private static void stripTag(ItemStack stack) {
         CustomData.update(DataComponents.CUSTOM_DATA, stack, t -> t.remove(TAG_KEY));
         CustomData remaining = stack.get(DataComponents.CUSTOM_DATA);
         if (remaining != null && remaining.isEmpty()) stack.remove(DataComponents.CUSTOM_DATA);
-
-        return true;
     }
 
-    public void markDiscovered(String compositeKey) {
-        if (discovered.add(compositeKey)) setDirty();
+    private void fireAdvancementTriggers(ServerPlayer player, String compositeKey) {
+        String[] parts = compositeKey.split("\\|", 3);
+        String type = parts[0];
+        String sourceId = parts[1];
+        String droppedItemId = parts[2];
+
+        AdvancementHelper.award(player, "root", "first_drop");
+
+        if ("block".equals(type) && sourceId.contains("shulker_box")) {
+            AdvancementHelper.award(player, "gone_forever", "shulker_broken");
+        }
+        if ("block".equals(type) && isLogBlock(sourceId)) {
+            AdvancementHelper.award(player, "woodnt_you_know_it", "log_non_log");
+        }
+        if ("block".equals(type) && sourceId.contains("diamond_ore")) {
+            AdvancementHelper.award(player, "wrong_ore", "ore_non_ore");
+        }
+
+        Identifier droppedId = Identifier.tryParse(droppedItemId);
+        if (droppedId != null) {
+            Item replacement = DropMappingGenerator.getItem(worldSeed, droppedId);
+            if (replacement.components().has(DataComponents.FOOD)) {
+                if ("block".equals(type)) AdvancementHelper.award(player, "bon_appetit", "food_from_block");
+                if ("mob".equals(type))   AdvancementHelper.award(player, "chefs_surprise", "food_from_mob");
+            }
+            Identifier replacementId = BuiltInRegistries.ITEM.getKey(replacement);
+            if (replacementId != null && replacementId.getPath().endsWith("_spawn_egg")) {
+                AdvancementHelper.award(player, "spawn_egg", "got_egg");
+            }
+        }
+
+        int count = discovered.size();
+        if (count >= 50)  AdvancementHelper.award(player, "curious_mind", "discovery_50");
+        if (count >= 200) AdvancementHelper.award(player, "cartographer", "discovery_200");
+        if (count >= 500) AdvancementHelper.award(player, "grand_unified", "discovery_500");
+    }
+
+    private static boolean isLogBlock(String sourceId) {
+        return sourceId.contains("_log") || sourceId.contains("_stem") || sourceId.contains("_wood");
+    }
+
+    public boolean markDiscovered(String compositeKey) {
+        if (discovered.add(compositeKey)) { setDirty(); return true; }
+        return false;
     }
 
     /**

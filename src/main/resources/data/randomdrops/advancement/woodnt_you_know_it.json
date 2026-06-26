@@ -1,0 +1,15 @@
+{
+  "display": {
+    "icon": { "id": "minecraft:oak_log" },
+    "title": { "text": "Woodn't You Know It" },
+    "description": { "text": "Logs still grow on trees. They just don't fall from them." },
+    "frame": "task",
+    "show_toast": true,
+    "announce_to_chat": true,
+    "hidden": false
+  },
+  "parent": "randomdrops:root",
+  "criteria": {
+    "log_non_log": { "trigger": "minecraft:impossible" }
+  }
+}

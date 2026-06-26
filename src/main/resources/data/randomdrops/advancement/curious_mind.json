@@ -1,0 +1,15 @@
+{
+  "display": {
+    "icon": { "id": "minecraft:spyglass" },
+    "title": { "text": "Curious Mind" },
+    "description": { "text": "The world is full of surprises." },
+    "frame": "goal",
+    "show_toast": true,
+    "announce_to_chat": true,
+    "hidden": false
+  },
+  "parent": "randomdrops:root",
+  "criteria": {
+    "discovery_50": { "trigger": "minecraft:impossible" }
+  }
+}

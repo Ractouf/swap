@@ -1,9 +1,11 @@
 package com.randomdrops.mixin;
 
+import com.randomdrops.advancement.AdvancementHelper;
 import com.randomdrops.mapping.ChestSwapState;
 import net.minecraft.resources.ResourceKey;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerLevel;
+import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.RandomizableContainer;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.level.Level;
@@ -30,7 +32,10 @@ public interface RandomizableContainerMixin {
         MinecraftServer server = sl.getServer();
         if (server == null) return;
         ChestSwapState state = ChestSwapState.get(server);
-        state.recordDiscovered(current);
+        boolean isNew = state.recordDiscovered(current);
+        if (isNew && player instanceof ServerPlayer sp) {
+            AdvancementHelper.award(sp, "pandoras_chest", "chest_opened");
+        }
         setLootTable(state.getSwap(current));
     }
 }

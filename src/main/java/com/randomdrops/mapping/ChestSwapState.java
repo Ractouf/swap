@@ -99,9 +99,10 @@ public class ChestSwapState extends SavedData {
         setDirty();
     }
 
-    /** Record that a player has opened a chest using this loot table. */
-    public void recordDiscovered(ResourceKey<LootTable> tableKey) {
-        if (discoveredSrcs.add(tableKey.identifier().toString())) setDirty();
+    /** Record that a player has opened a chest using this loot table. Returns true if newly discovered. */
+    public boolean recordDiscovered(ResourceKey<LootTable> tableKey) {
+        if (discoveredSrcs.add(tableKey.identifier().toString())) { setDirty(); return true; }
+        return false;
     }
 
     /** Returns only swaps for loot tables the player has actually opened. */

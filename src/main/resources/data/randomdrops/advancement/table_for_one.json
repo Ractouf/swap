@@ -1,0 +1,20 @@
+{
+  "display": {
+    "icon": { "id": "minecraft:crafting_table" },
+    "title": { "text": "Table for One" },
+    "description": { "text": "Against all odds, you acquired enough planks. A new age of crafting begins." },
+    "frame": "goal",
+    "show_toast": true,
+    "announce_to_chat": true,
+    "hidden": false
+  },
+  "parent": "randomdrops:woodnt_you_know_it",
+  "criteria": {
+    "has_crafting_table": {
+      "trigger": "minecraft:inventory_changed",
+      "conditions": {
+        "items": [{ "items": "minecraft:crafting_table" }]
+      }
+    }
+  }
+}

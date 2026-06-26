@@ -1,0 +1,15 @@
+{
+  "display": {
+    "icon": { "id": "minecraft:shulker_box" },
+    "title": { "text": "Gone Forever" },
+    "description": { "text": "Your shulker box became something else. The contents did not survive the transition." },
+    "frame": "challenge",
+    "show_toast": true,
+    "announce_to_chat": true,
+    "hidden": true
+  },
+  "parent": "randomdrops:root",
+  "criteria": {
+    "shulker_broken": { "trigger": "minecraft:impossible" }
+  }
+}

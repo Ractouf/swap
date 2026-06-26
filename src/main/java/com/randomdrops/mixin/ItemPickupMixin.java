@@ -2,6 +2,7 @@ package com.randomdrops.mixin;
 
 import com.randomdrops.mapping.DropMappingState;
 import net.minecraft.server.MinecraftServer;
+import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.entity.item.ItemEntity;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.ItemStack;
@@ -23,6 +24,7 @@ public class ItemPickupMixin {
         if (server == null) return;
 
         ItemStack stack = self.getItem();
-        DropMappingState.tryRecordAndStrip(stack, server);
+        ServerPlayer sp = player instanceof ServerPlayer spl ? spl : null;
+        DropMappingState.tryRecordAndStrip(stack, server, sp);
     }
 }

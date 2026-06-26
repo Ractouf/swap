@@ -1,0 +1,15 @@
+{
+  "display": {
+    "icon": { "id": "minecraft:enchanted_book" },
+    "title": { "text": "Grand Unified Theory" },
+    "description": { "text": "You've catalogued enough chaos to write a thesis. Conclusion: good luck." },
+    "frame": "challenge",
+    "show_toast": true,
+    "announce_to_chat": true,
+    "hidden": false
+  },
+  "parent": "randomdrops:cartographer",
+  "criteria": {
+    "discovery_500": { "trigger": "minecraft:impossible" }
+  }
+}
