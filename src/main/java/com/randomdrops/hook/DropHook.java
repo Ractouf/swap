@@ -65,7 +65,18 @@ public final class DropHook {
         if (context.hasParameter(LootContextParams.BLOCK_STATE)) {
             Block block = context.getParameter(LootContextParams.BLOCK_STATE).getBlock();
             Identifier blockId = BuiltInRegistries.BLOCK.getKey(block);
-            return blockId == null ? null : "block|" + blockId;
+            if (blockId == null) return null;
+            // Wall-mounted sign variants use a separate block ID but drop the same item as the
+            // floor sign, so normalise them to avoid duplicate discovery entries.
+            String path = blockId.getPath();
+            if (path.contains("_wall_hanging_sign")) {
+                path = path.replace("_wall_hanging_sign", "_hanging_sign");
+            } else if (path.contains("_wall_sign")) {
+                path = path.replace("_wall_sign", "_sign");
+            }
+            Identifier normalizedId = path.equals(blockId.getPath())
+                ? blockId : Identifier.fromNamespaceAndPath(blockId.getNamespace(), path);
+            return "block|" + normalizedId;
         }
         if (context.hasParameter(LootContextParams.THIS_ENTITY)) {
             Entity entity = context.getParameter(LootContextParams.THIS_ENTITY);
