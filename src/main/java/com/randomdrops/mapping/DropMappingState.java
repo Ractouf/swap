@@ -128,6 +128,9 @@ public class DropMappingState extends SavedData {
         if ("block".equals(type) && sourceId.contains("diamond_ore")) {
             AdvancementHelper.award(player, "wrong_ore", "ore_non_ore");
         }
+        if ("block".equals(type) && "minecraft:crafting_table".equals(sourceId)) {
+            AdvancementHelper.award(player, "table_flip", "table_transformed");
+        }
 
         Identifier droppedId = Identifier.tryParse(droppedItemId);
         if (droppedId != null) {

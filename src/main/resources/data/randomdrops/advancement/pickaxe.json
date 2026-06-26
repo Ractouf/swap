@@ -1,0 +1,20 @@
+{
+  "display": {
+    "icon": { "id": "minecraft:iron_pickaxe" },
+    "title": { "text": "Pick Your Battles" },
+    "description": { "text": "Obtain a pickaxe. Progress begins here." },
+    "frame": "task",
+    "show_toast": true,
+    "announce_to_chat": true,
+    "hidden": false
+  },
+  "parent": "randomdrops:table_for_one",
+  "criteria": {
+    "has_pickaxe": {
+      "trigger": "minecraft:inventory_changed",
+      "conditions": {
+        "items": [{ "items": "#minecraft:pickaxes" }]
+      }
+    }
+  }
+}

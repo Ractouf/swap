@@ -1,0 +1,23 @@
+{
+  "display": {
+    "icon": { "id": "minecraft:diamond_pickaxe" },
+    "title": { "text": "Handle With Care" },
+    "description": { "text": "Obtain a Silk Touch pickaxe. The drop you get is still not what you expected." },
+    "frame": "goal",
+    "show_toast": true,
+    "announce_to_chat": true,
+    "hidden": false
+  },
+  "parent": "randomdrops:pickaxe",
+  "criteria": {
+    "has_silk_touch_pickaxe": {
+      "trigger": "minecraft:inventory_changed",
+      "conditions": {
+        "items": [{
+          "items": "#minecraft:pickaxes",
+          "enchantments": [{ "enchantment": "minecraft:silk_touch", "levels": { "min": 1 } }]
+        }]
+      }
+    }
+  }
+}
