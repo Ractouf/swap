@@ -13,7 +13,7 @@ import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.Identifier;
 import net.minecraft.world.item.Item;
-import net.minecraft.world.level.block.Block;
+
 
 public final class QueryCommand {
 
@@ -28,12 +28,13 @@ public final class QueryCommand {
             CommandBuildContext buildContext,
             CommandSelection selection
     ) {
-        // /randomdrops query <block-id>
-        // e.g. /randomdrops query minecraft:coal_ore
+        // /randomdrops query <item-id>
+        // e.g. /randomdrops query minecraft:dirt
+        //      /randomdrops query minecraft:mutton
         dispatcher.register(
             Commands.literal("randomdrops")
                 .then(Commands.literal("query")
-                    .then(Commands.argument("block", IdentifierArgument.id())
+                    .then(Commands.argument("item", IdentifierArgument.id())
                         .executes(QueryCommand::execute)
                     )
                 )
@@ -42,22 +43,19 @@ public final class QueryCommand {
 
     private static int execute(CommandContext<CommandSourceStack> ctx) {
         CommandSourceStack source = ctx.getSource();
-        Identifier blockId = IdentifierArgument.getId(ctx, "block");
+        Identifier itemId = IdentifierArgument.getId(ctx, "item");
 
-        if (!BuiltInRegistries.BLOCK.containsKey(blockId)) {
-            source.sendFailure(Component.literal("Unknown block: " + blockId));
+        if (!BuiltInRegistries.ITEM.containsKey(itemId)) {
+            source.sendFailure(Component.literal("Unknown item: " + itemId));
             return 0;
         }
 
-        Block block = BuiltInRegistries.BLOCK.getValue(blockId);
-        Identifier blockItemId = BuiltInRegistries.ITEM.getKey(block.asItem());
-
         DropMappingState state = DropMappingState.get(source.getServer());
-        Item replacement = state.getOrCompute(blockId, blockItemId);
+        Item replacement = state.getOrCompute(itemId);
         Identifier replacementId = BuiltInRegistries.ITEM.getKey(replacement);
 
         source.sendSuccess(
-            () -> Component.literal(blockId + " → " + replacementId),
+            () -> Component.literal(itemId + " → " + replacementId),
             false
         );
         return 1;

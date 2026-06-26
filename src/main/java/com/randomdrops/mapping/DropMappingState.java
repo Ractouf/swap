@@ -15,8 +15,6 @@ import java.util.Map;
 
 public class DropMappingState extends SavedData {
 
-    private static final String SEP = "|";
-
     public static final Codec<DropMappingState> CODEC =
         Codec.unboundedMap(Codec.STRING, BuiltInRegistries.ITEM.byNameCodec())
              .xmap(DropMappingState::fromMap, s -> s.mappings);
@@ -55,16 +53,16 @@ public class DropMappingState extends SavedData {
     }
 
     /**
-     * Returns the mapped item for a (lootTable, droppedItem) pair.
+     * Returns the mapped item for a (block, droppedItem) pair.
      * Works uniformly for blocks, entities, chests, fishing, and any other loot source.
      * Computed on first call, then persisted.
      */
-    public Item getOrCompute(Identifier blockId, Identifier droppedItemId) {
-        String key = blockId + SEP + droppedItemId;
+    public Item getOrCompute(Identifier droppedItemId) {
+        String key = droppedItemId.toString();
         Item existing = mappings.get(key);
         if (existing != null) return existing;
 
-        Item computed = DropMappingGenerator.getItem(worldSeed, blockId, droppedItemId);
+        Item computed = DropMappingGenerator.getItem(worldSeed, droppedItemId);
         mappings.put(key, computed);
         setDirty();
         return computed;

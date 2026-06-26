@@ -5,6 +5,8 @@ import net.fabricmc.fabric.api.loot.v3.LootTableEvents;
 import net.minecraft.core.Holder;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.resources.Identifier;
+import net.minecraft.world.entity.Entity;
+import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.block.Block;
@@ -29,12 +31,7 @@ public final class DropHook {
             LootContext context,
             List<ItemStack> drops
     ) {
-        if (!context.hasParameter(LootContextParams.BLOCK_STATE)) return;
-
-        BlockState state = context.getParameter(LootContextParams.BLOCK_STATE);
-        Block block = state.getBlock();
-        Identifier blockId = BuiltInRegistries.BLOCK.getKey(block);
-        if (blockId == null) return;
+        if (resolveSourceId(context) == null) return;
 
         DropMappingState mappingState = DropMappingState.get(context.getLevel().getServer());
 
@@ -47,10 +44,23 @@ public final class DropHook {
             Identifier droppedItemId = BuiltInRegistries.ITEM.getKey(originalItem);
             if (droppedItemId == null) continue;
 
-            Item replacement = mappingState.getOrCompute(blockId, droppedItemId);
+            Item replacement = mappingState.getOrCompute(droppedItemId);
             if (replacement != originalItem) {
                 iter.set(new ItemStack(replacement, original.getCount()));
             }
         }
+    }
+
+    private static Identifier resolveSourceId(LootContext context) {
+        if (context.hasParameter(LootContextParams.BLOCK_STATE)) {
+            Block block = context.getParameter(LootContextParams.BLOCK_STATE).getBlock();
+            return BuiltInRegistries.BLOCK.getKey(block);
+        }
+        if (context.hasParameter(LootContextParams.THIS_ENTITY)) {
+            Entity entity = context.getParameter(LootContextParams.THIS_ENTITY);
+            if (entity instanceof Player) return null; // chest opened by player, not a mob death
+            return BuiltInRegistries.ENTITY_TYPE.getKey(entity.getType());
+        }
+        return null;
     }
 }

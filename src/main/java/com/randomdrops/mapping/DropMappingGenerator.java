@@ -43,16 +43,16 @@ public final class DropMappingGenerator {
     }
 
     /**
-     * Returns the item that maps to a given (lootTable, droppedItem) pair in this world.
+     * Returns the item that maps to a given (block, droppedItem) pair in this world.
      *
-     * The loot table ID (e.g. minecraft:blocks/coal_ore, minecraft:entities/sheep,
-     * minecraft:chests/simple_dungeon) combined with the dropped item ID forms a unique
-     * key that covers every loot source uniformly.
+     * Using the dropped item ID as the key means silk-touch variants that produce a
+     * different item naturally get a different mapping, while variants that happen to
+     * drop the same item share one mapping — exactly the design intent.
      * Identical parameters always yield the same result.
      */
-    public static Item getItem(long worldSeed, Identifier blockId, Identifier droppedItemId) {
+    public static Item getItem(long worldSeed, Identifier droppedItemId) {
         if (ITEM_POOL == null) throw new IllegalStateException("DropMappingGenerator.init() not called");
-        long seed = deriveSeed(worldSeed, blockId, droppedItemId);
+        long seed = deriveSeed(worldSeed, droppedItemId);
         List<Item> pool = new ArrayList<>(ITEM_POOL);
         Collections.shuffle(pool, new Random(seed));
         return pool.get(0);
@@ -64,10 +64,8 @@ public final class DropMappingGenerator {
     }
 
     // LCG mixing: namespace and path incorporated separately so "a:bc" ≠ "ab:c".
-    private static long deriveSeed(long worldSeed, Identifier blockId, Identifier droppedItemId) {
+    private static long deriveSeed(long worldSeed, Identifier droppedItemId) {
         long h = worldSeed;
-        h = h * 6364136223846793005L + blockId.getNamespace().hashCode();
-        h = h * 6364136223846793005L + blockId.getPath().hashCode();
         h = h * 6364136223846793005L + droppedItemId.getNamespace().hashCode();
         h = h * 6364136223846793005L + droppedItemId.getPath().hashCode();
         return h;

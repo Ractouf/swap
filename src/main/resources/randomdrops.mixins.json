@@ -3,6 +3,7 @@
 	"package": "com.randomdrops.mixin",
 	"compatibilityLevel": "JAVA_25",
 	"mixins": [
+		"RandomizableContainerMixin"
 	],
 	"injectors": {
 		"defaultRequire": 0
