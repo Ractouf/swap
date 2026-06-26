@@ -87,6 +87,8 @@ public class DiscoveryScreen extends Screen {
     private List<Identifier> searchMatches = new ArrayList<>();
     private int              matchIndex    = 0;
     private boolean          initialPanDone = false;
+    private Set<Identifier>  visibleCache   = null;
+    private String           visibleCacheKey = null;
 
     // ── constructor ───────────────────────────────────────────────────────
     public DiscoveryScreen(List<String> entries) {
@@ -128,13 +130,22 @@ public class DiscoveryScreen extends Screen {
         rebuildLayout();
         if (!initialPanDone && !nodePos.isEmpty()) {
             initialPanDone = true;
+            boolean pannedToItem = false;
             Minecraft mc = Minecraft.getInstance();
             if (mc.player != null) {
                 ItemStack held = mc.player.getMainHandItem();
                 if (!held.isEmpty()) {
                     Identifier heldId = BuiltInRegistries.ITEM.getKey(held.getItem());
-                    if (heldId != null && nodePos.containsKey(heldId)) panToNode(heldId);
+                    if (heldId != null && nodePos.containsKey(heldId)) {
+                        panToNode(heldId);
+                        pannedToItem = true;
+                    }
                 }
+            }
+            if (!pannedToItem) {
+                // No held item — scroll to the very top, horizontally centred
+                panX = 0;
+                panY = NODE_SIZE / 2f;
             }
         }
     }
@@ -143,6 +154,7 @@ public class DiscoveryScreen extends Screen {
 
     private void rebuildLayout() {
         nodePos.clear();
+        visibleCache = null; visibleCacheKey = null;
         if (currentTab == Tab.DROPS) rebuildDropLayout();
         else                          rebuildChestLayout();
     }
@@ -335,8 +347,12 @@ public class DiscoveryScreen extends Screen {
         if (my >= HEADER_H) {
             int cmx = mx - originX, cmy = my - originY;
             int half = NODE_SIZE / 2;
+            // viewport bounds in graph space
+            int gLeft = -originX - half, gRight = width - originX + half;
+            int gTop  = HEADER_H - originY - half, gBottom = height - originY + half;
             for (var e : nodePos.entrySet()) {
                 float[] p = e.getValue();
+                if (p[0] < gLeft || p[0] > gRight || p[1] < gTop || p[1] > gBottom) continue;
                 if (Math.abs(cmx - p[0]) < half && Math.abs(cmy - p[1]) < half) {
                     hovNode = e.getKey(); break;
                 }
@@ -349,15 +365,18 @@ public class DiscoveryScreen extends Screen {
         for (var e : activeEdges.entrySet()) {
             float[] from = nodePos.get(e.getKey());
             if (from == null) continue;
+            int fx = originX + (int)from[0], fy = originY + (int)from[1];
             for (Identifier tgt : e.getValue()) {
                 boolean isOut = e.getKey().equals(hovNode);
                 boolean isIn  = tgt.equals(hovNode);
                 if (isOut || isIn) continue;
                 if (!visible.contains(e.getKey()) || !visible.contains(tgt)) continue;
                 float[] to = nodePos.get(tgt);
-                if (to != null)
-                    drawEdge(g, originX + (int)from[0], originY + (int)from[1],
-                                originX + (int)to[0],   originY + (int)to[1], C_EDGE, C_ARROW);
+                if (to == null) continue;
+                int tx = originX + (int)to[0], ty = originY + (int)to[1];
+                if (Math.max(fx, tx) < 0 || Math.min(fx, tx) > width)  continue;
+                if (Math.max(fy, ty) < HEADER_H || Math.min(fy, ty) > height) continue;
+                drawEdge(g, fx, fy, tx, ty, C_EDGE, C_ARROW);
             }
         }
 
@@ -381,12 +400,17 @@ public class DiscoveryScreen extends Screen {
             }
         }
 
-        // Nodes
+        // Nodes — skip those outside the viewport
+        int half = NODE_SIZE / 2;
         for (var e : nodePos.entrySet()) {
             Identifier id = e.getKey();
+            int sx = originX + (int)e.getValue()[0];
+            int sy = originY + (int)e.getValue()[1];
+            if (sx + half < 0 || sx - half > width)   continue;
+            if (sy + half < HEADER_H || sy - half > height) continue;
             boolean vis = visible.contains(id);
             boolean hov = id.equals(hovNode);
-            drawNode(g, iconFor(id), originX + (int)e.getValue()[0], originY + (int)e.getValue()[1], hov, vis);
+            drawNode(g, iconFor(id), sx, sy, hov, vis);
         }
 
         // Tooltip
@@ -407,12 +431,12 @@ public class DiscoveryScreen extends Screen {
 
     private Set<Identifier> computeVisible() {
         if (searchText.isEmpty()) return nodePos.keySet();
+        if (searchText.equals(visibleCacheKey) && visibleCache != null) return visibleCache;
         String q = searchText.toLowerCase();
         Set<Identifier> visible = new HashSet<>();
         Queue<Identifier> bfs = new ArrayDeque<>();
         for (Identifier id : nodePos.keySet())
             if (id.toString().toLowerCase().contains(q) && visible.add(id)) bfs.add(id);
-        // Expand to the whole connected chain (undirected traversal)
         while (!bfs.isEmpty()) {
             Identifier cur = bfs.poll();
             for (Identifier nb : activeEdges.getOrDefault(cur, Collections.emptySet()))
@@ -420,7 +444,8 @@ public class DiscoveryScreen extends Screen {
             for (Identifier nb : activeIncoming.getOrDefault(cur, Collections.emptySet()))
                 if (visible.add(nb)) bfs.add(nb);
         }
-        return visible;
+        visibleCacheKey = searchText;
+        return visibleCache = visible;
     }
 
     private void drawTabBar(GuiGraphicsExtractor g, int mx, int my) {
