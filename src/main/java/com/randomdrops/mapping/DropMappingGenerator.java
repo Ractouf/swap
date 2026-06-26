@@ -9,7 +9,6 @@ import java.util.*;
 
 public final class DropMappingGenerator {
 
-    // Survival-unobtainable items — excluded from the randomised pool.
     private static final Set<Item> EXCLUDED = Set.of(
         Items.AIR,
         Items.COMMAND_BLOCK,
@@ -24,7 +23,15 @@ public final class DropMappingGenerator {
         Items.LIGHT,
         Items.JIGSAW,
         Items.TEST_BLOCK,
-        Items.TEST_INSTANCE_BLOCK
+        Items.TEST_INSTANCE_BLOCK,
+        Items.BEDROCK,
+        Items.END_PORTAL_FRAME,
+        Items.REINFORCED_DEEPSLATE,
+        Items.BUDDING_AMETHYST,
+        Items.TRIAL_SPAWNER,
+        Items.VAULT,
+        Items.FARMLAND,
+        Items.PETRIFIED_OAK_SLAB
     );
 
     private static List<Item> ITEM_POOL = null;
