@@ -12,6 +12,9 @@
 	"entrypoints": {
 		"main": [
 			"com.randomdrops.RandomDropsMod"
+		],
+		"client": [
+			"com.randomdrops.client.RandomDropsClient"
 		]
 	},
 	"mixins": [
