@@ -50,10 +50,11 @@ public final class DropHook {
             if (droppedItemId == null) continue;
 
             Item replacement = DropMappingGenerator.getItem(worldSeed, droppedItemId);
-            if (replacement == originalItem) continue;
 
-            ItemStack newStack = new ItemStack(replacement, original.getCount());
-            // Composite tag: "block|minecraft:grass_block|minecraft:dirt"
+            // Copy for normal drops to preserve existing NBT; new stack for replacements
+            ItemStack newStack = (replacement == originalItem)
+                ? original.copy()
+                : new ItemStack(replacement, original.getCount());
             DropMappingState.tagStack(newStack, source + "|" + droppedItemId);
             iter.set(newStack);
         }

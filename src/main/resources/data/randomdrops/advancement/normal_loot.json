@@ -1,0 +1,15 @@
+{
+  "display": {
+    "icon": { "id": "minecraft:oak_sapling" },
+    "title": { "text": "By the Book" },
+    "description": { "text": "You got exactly what was supposed to drop. In this world, that's suspicious." },
+    "frame": "goal",
+    "show_toast": true,
+    "announce_to_chat": true,
+    "hidden": true
+  },
+  "parent": "randomdrops:root",
+  "criteria": {
+    "got_normal": { "trigger": "minecraft:impossible" }
+  }
+}
