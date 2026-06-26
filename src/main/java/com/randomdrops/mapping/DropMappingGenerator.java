@@ -31,7 +31,8 @@ public final class DropMappingGenerator {
         Items.TRIAL_SPAWNER,
         Items.VAULT,
         Items.FARMLAND,
-        Items.PETRIFIED_OAK_SLAB
+        Items.PETRIFIED_OAK_SLAB,
+        Items.ENCHANTED_BOOK
     );
 
     private static List<Item> ITEM_POOL = null;
