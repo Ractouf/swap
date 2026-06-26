@@ -1,16 +1,17 @@
 package com.randomdrops.hook;
 
+import com.randomdrops.mapping.DropMappingGenerator;
 import com.randomdrops.mapping.DropMappingState;
 import net.fabricmc.fabric.api.loot.v3.LootTableEvents;
 import net.minecraft.core.Holder;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.resources.Identifier;
+import net.minecraft.server.MinecraftServer;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.block.Block;
-import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.storage.loot.LootContext;
 import net.minecraft.world.level.storage.loot.LootTable;
 import net.minecraft.world.level.storage.loot.parameters.LootContextParams;
@@ -31,9 +32,13 @@ public final class DropHook {
             LootContext context,
             List<ItemStack> drops
     ) {
-        if (resolveSourceId(context) == null) return;
+        // Returns "block|minecraft:grass_block" or "mob|minecraft:sheep", or null to skip
+        String source = resolveSource(context);
+        if (source == null) return;
 
-        DropMappingState mappingState = DropMappingState.get(context.getLevel().getServer());
+        MinecraftServer server = context.getLevel().getServer();
+        if (server == null) return;
+        long worldSeed = server.overworld().getSeed();
 
         ListIterator<ItemStack> iter = drops.listIterator();
         while (iter.hasNext()) {
@@ -44,22 +49,28 @@ public final class DropHook {
             Identifier droppedItemId = BuiltInRegistries.ITEM.getKey(originalItem);
             if (droppedItemId == null) continue;
 
-            Item replacement = mappingState.getOrCompute(droppedItemId);
-            if (replacement != originalItem) {
-                iter.set(new ItemStack(replacement, original.getCount()));
-            }
+            Item replacement = DropMappingGenerator.getItem(worldSeed, droppedItemId);
+            if (replacement == originalItem) continue;
+
+            ItemStack newStack = new ItemStack(replacement, original.getCount());
+            // Composite tag: "block|minecraft:grass_block|minecraft:dirt"
+            DropMappingState.tagStack(newStack, source + "|" + droppedItemId);
+            iter.set(newStack);
         }
     }
 
-    private static Identifier resolveSourceId(LootContext context) {
+    /** Returns "type|sourceId" for block and mob sources, null for everything else (chests, etc.). */
+    private static String resolveSource(LootContext context) {
         if (context.hasParameter(LootContextParams.BLOCK_STATE)) {
             Block block = context.getParameter(LootContextParams.BLOCK_STATE).getBlock();
-            return BuiltInRegistries.BLOCK.getKey(block);
+            Identifier blockId = BuiltInRegistries.BLOCK.getKey(block);
+            return blockId == null ? null : "block|" + blockId;
         }
         if (context.hasParameter(LootContextParams.THIS_ENTITY)) {
             Entity entity = context.getParameter(LootContextParams.THIS_ENTITY);
-            if (entity instanceof Player) return null; // chest opened by player, not a mob death
-            return BuiltInRegistries.ENTITY_TYPE.getKey(entity.getType());
+            if (entity instanceof Player) return null;
+            Identifier entityId = BuiltInRegistries.ENTITY_TYPE.getKey(entity.getType());
+            return entityId == null ? null : "mob|" + entityId;
         }
         return null;
     }

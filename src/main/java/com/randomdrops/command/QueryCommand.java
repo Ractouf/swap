@@ -1,5 +1,6 @@
 package com.randomdrops.command;
 
+import com.randomdrops.mapping.DropMappingGenerator;
 import com.randomdrops.mapping.DropMappingState;
 import com.mojang.brigadier.CommandDispatcher;
 import com.mojang.brigadier.context.CommandContext;
@@ -51,7 +52,7 @@ public final class QueryCommand {
         }
 
         DropMappingState state = DropMappingState.get(source.getServer());
-        Item replacement = state.getOrCompute(itemId);
+        Item replacement = DropMappingGenerator.getItem(state.getWorldSeed(), itemId);
         Identifier replacementId = BuiltInRegistries.ITEM.getKey(replacement);
 
         source.sendSuccess(

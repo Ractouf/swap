@@ -29,6 +29,8 @@ public interface RandomizableContainerMixin {
         if (!(level instanceof ServerLevel sl)) return;
         MinecraftServer server = sl.getServer();
         if (server == null) return;
-        setLootTable(ChestSwapState.get(server).getSwap(current));
+        ChestSwapState state = ChestSwapState.get(server);
+        state.recordDiscovered(current);
+        setLootTable(state.getSwap(current));
     }
 }
