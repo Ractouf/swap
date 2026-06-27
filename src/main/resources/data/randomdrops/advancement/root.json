@@ -2,7 +2,7 @@
   "display": {
     "icon": { "id": "minecraft:grass_block" },
     "title": { "text": "Embrace the Randomness" },
-    "description": { "text": "Nothing drops what it should. Get used to it." },
+    "description": { "text": "Nothing drops what it should. Get used to it. Press H to view your discoveries." },
     "background": "minecraft:textures/gui/advancements/backgrounds/stone.png",
     "frame": "task",
     "show_toast": true,

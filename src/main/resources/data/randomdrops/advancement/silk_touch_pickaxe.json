@@ -10,14 +10,6 @@
   },
   "parent": "randomdrops:pickaxe",
   "criteria": {
-    "has_silk_touch_pickaxe": {
-      "trigger": "minecraft:inventory_changed",
-      "conditions": {
-        "items": [{
-          "items": "#minecraft:pickaxes",
-          "enchantments": [{ "enchantment": "minecraft:silk_touch", "levels": { "min": 1 } }]
-        }]
-      }
-    }
+    "used_silk_touch": { "trigger": "minecraft:impossible" }
   }
 }
