@@ -1,6 +1,7 @@
 package com.randomdrops.mapping;
 
 import com.mojang.serialization.Codec;
+import com.randomdrops.RandomDropsMod;
 import com.randomdrops.advancement.AdvancementHelper;
 import net.minecraft.core.component.DataComponents;
 import net.minecraft.core.registries.BuiltInRegistries;
@@ -24,13 +25,37 @@ import java.util.*;
  *   type       = "block" or "mob"
  *   sourceId   = block/entity-type identifier (minecraft:grass_block, minecraft:sheep)
  *   droppedItemId = what the source would have normally dropped (minecraft:dirt, minecraft:white_wool)
+ *
+ * Codec encoding:
+ *   plain string       → global discovery entry
+ *   "p|UUID|key"       → per-player discovery entry
  */
 public class DropMappingState extends SavedData {
 
     public static final Codec<DropMappingState> CODEC =
         Codec.STRING.listOf()
-             .xmap(list -> new DropMappingState(new HashSet<>(list)),
-                   s -> new ArrayList<>(s.discovered));
+             .xmap(list -> {
+                 Set<String> global = new HashSet<>();
+                 Map<String, Set<String>> perPlayer = new HashMap<>();
+                 for (String s : list) {
+                     if (s.startsWith("p|")) {
+                         int sep = s.indexOf('|', 2);
+                         if (sep > 2) {
+                             perPlayer.computeIfAbsent(s.substring(2, sep), k -> new HashSet<>())
+                                      .add(s.substring(sep + 1));
+                         }
+                     } else {
+                         global.add(s);
+                     }
+                 }
+                 return new DropMappingState(global, perPlayer);
+             },
+             state -> {
+                 List<String> list = new ArrayList<>(state.discovered);
+                 state.perPlayer.forEach((uuid, keys) ->
+                     keys.forEach(k -> list.add("p|" + uuid + "|" + k)));
+                 return list;
+             });
 
     public static final SavedDataType<DropMappingState> TYPE = new SavedDataType<>(
         Identifier.fromNamespaceAndPath("randomdrops", "discoveries"),
@@ -41,15 +66,18 @@ public class DropMappingState extends SavedData {
 
     static final String TAG_KEY = "randomdrops_src";
 
-    private final Set<String> discovered;
+    private final Set<String> discovered;             // global pool
+    private final Map<String, Set<String>> perPlayer; // UUID string → composite keys
     private long worldSeed;
 
     public DropMappingState() {
         this.discovered = new HashSet<>();
+        this.perPlayer = new HashMap<>();
     }
 
-    private DropMappingState(Set<String> discovered) {
+    private DropMappingState(Set<String> discovered, Map<String, Set<String>> perPlayer) {
         this.discovered = discovered;
+        this.perPlayer = perPlayer;
     }
 
     public static DropMappingState get(MinecraftServer server) {
@@ -69,6 +97,7 @@ public class DropMappingState extends SavedData {
 
     /**
      * Called on pickup: reads the composite tag, records the discovery, strips the tag.
+     * Routes to the global pool or the player's personal pool based on the gamerule.
      * Returns true if a new discovery was recorded.
      */
     public static boolean tryRecordAndStrip(ItemStack stack, MinecraftServer server, ServerPlayer player) {
@@ -96,9 +125,12 @@ public class DropMappingState extends SavedData {
             }
         }
 
-        boolean isNew = state.markDiscovered(compositeKey);
+        boolean shared = server.getGameRules().get(RandomDropsMod.SHARED_DISCOVERY);
+        String playerKey = (!shared && player != null) ? player.getUUID().toString() : null;
+
+        boolean isNew = state.markDiscovered(compositeKey, playerKey);
         if (isNew && player != null) {
-            state.fireAdvancementTriggers(player, compositeKey);
+            state.fireAdvancementTriggers(player, compositeKey, playerKey);
         }
 
         stripTag(stack);
@@ -111,7 +143,7 @@ public class DropMappingState extends SavedData {
         if (remaining != null && remaining.isEmpty()) stack.remove(DataComponents.CUSTOM_DATA);
     }
 
-    private void fireAdvancementTriggers(ServerPlayer player, String compositeKey) {
+    private void fireAdvancementTriggers(ServerPlayer player, String compositeKey, String playerKey) {
         String[] parts = compositeKey.split("\\|", 3);
         String type = parts[0];
         String sourceId = parts[1];
@@ -119,18 +151,14 @@ public class DropMappingState extends SavedData {
 
         AdvancementHelper.award(player, "root", "first_drop");
 
-        if ("block".equals(type) && sourceId.contains("shulker_box")) {
+        if ("block".equals(type) && sourceId.contains("shulker_box"))
             AdvancementHelper.award(player, "gone_forever", "shulker_broken");
-        }
-        if ("block".equals(type) && isLogBlock(sourceId)) {
+        if ("block".equals(type) && isLogBlock(sourceId))
             AdvancementHelper.award(player, "woodnt_you_know_it", "log_non_log");
-        }
-        if ("block".equals(type) && sourceId.contains("diamond_ore")) {
+        if ("block".equals(type) && sourceId.contains("diamond_ore"))
             AdvancementHelper.award(player, "wrong_ore", "ore_non_ore");
-        }
-        if ("block".equals(type) && "minecraft:crafting_table".equals(sourceId)) {
+        if ("block".equals(type) && "minecraft:crafting_table".equals(sourceId))
             AdvancementHelper.award(player, "table_flip", "table_transformed");
-        }
 
         Identifier droppedId = Identifier.tryParse(droppedItemId);
         if (droppedId != null) {
@@ -140,12 +168,15 @@ public class DropMappingState extends SavedData {
                 if ("mob".equals(type))   AdvancementHelper.award(player, "chefs_surprise", "food_from_mob");
             }
             Identifier replacementId = BuiltInRegistries.ITEM.getKey(replacement);
-            if (replacementId != null && replacementId.getPath().endsWith("_spawn_egg")) {
+            if (replacementId != null && replacementId.getPath().endsWith("_spawn_egg"))
                 AdvancementHelper.award(player, "spawn_egg", "got_egg");
-            }
         }
 
-        int count = discovered.size();
+        // Count against whichever pool this discovery was recorded in
+        Set<String> countSet = playerKey != null
+            ? perPlayer.getOrDefault(playerKey, Collections.emptySet())
+            : discovered;
+        int count = countSet.size();
         if (count >= 50)  AdvancementHelper.award(player, "curious_mind", "discovery_50");
         if (count >= 200) AdvancementHelper.award(player, "cartographer", "discovery_200");
         if (count >= 500) AdvancementHelper.award(player, "grand_unified", "discovery_500");
@@ -155,21 +186,37 @@ public class DropMappingState extends SavedData {
         return sourceId.contains("_log") || sourceId.contains("_stem") || sourceId.contains("_wood");
     }
 
-    public boolean markDiscovered(String compositeKey) {
+    /** Records a discovery. playerKey null = global pool; non-null = per-player pool. */
+    public boolean markDiscovered(String compositeKey, String playerKey) {
+        if (playerKey != null) {
+            if (perPlayer.computeIfAbsent(playerKey, k -> new HashSet<>()).add(compositeKey)) {
+                setDirty();
+                return true;
+            }
+            return false;
+        }
         if (discovered.add(compositeKey)) { setDirty(); return true; }
         return false;
     }
 
+    public boolean markDiscovered(String compositeKey) {
+        return markDiscovered(compositeKey, null);
+    }
+
     /**
      * Returns categorised entries for the network packet.
-     * Format: "type|sourceId|replacementId"  (replacement is computed from droppedItemId)
+     * playerId null = global pool; non-null = that player's personal pool.
+     * Format: "type|sourceId|replacementId"
      */
-    public List<String> getCategorizedEntries() {
+    public List<String> getCategorizedEntries(UUID playerId) {
+        Set<String> source = playerId != null
+            ? perPlayer.getOrDefault(playerId.toString(), Collections.emptySet())
+            : discovered;
+
         List<String> result = new ArrayList<>();
-        for (String key : discovered) {
+        for (String key : source) {
             String[] parts = key.split("\\|", 3);
             if (parts.length != 3) continue;
-            // parts: [type, sourceId, droppedItemId]
             Identifier droppedId = Identifier.tryParse(parts[2]);
             if (droppedId == null) continue;
 
@@ -177,7 +224,6 @@ public class DropMappingState extends SavedData {
             Identifier replacementId = BuiltInRegistries.ITEM.getKey(replacement);
             if (replacementId == null || replacementId.equals(droppedId)) continue;
 
-            // Output: "block|minecraft:grass_block|minecraft:gold_ingot"
             result.add(parts[0] + "|" + parts[1] + "|" + replacementId);
         }
         return result;

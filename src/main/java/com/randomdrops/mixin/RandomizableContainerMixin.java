@@ -1,5 +1,6 @@
 package com.randomdrops.mixin;
 
+import com.randomdrops.RandomDropsMod;
 import com.randomdrops.advancement.AdvancementHelper;
 import com.randomdrops.mapping.ChestSwapState;
 import net.minecraft.resources.ResourceKey;
@@ -15,6 +16,8 @@ import org.spongepowered.asm.mixin.Shadow;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
+
+import java.util.UUID;
 
 @Mixin(RandomizableContainer.class)
 public interface RandomizableContainerMixin {
@@ -32,7 +35,9 @@ public interface RandomizableContainerMixin {
         MinecraftServer server = sl.getServer();
         if (server == null) return;
         ChestSwapState state = ChestSwapState.get(server);
-        boolean isNew = state.recordDiscovered(current);
+        boolean shared = server.getGameRules().get(RandomDropsMod.SHARED_DISCOVERY);
+        UUID playerId = (!shared && player instanceof ServerPlayer) ? player.getUUID() : null;
+        boolean isNew = state.recordDiscovered(current, playerId);
         if (isNew && player instanceof ServerPlayer sp) {
             AdvancementHelper.award(sp, "pandoras_chest", "chest_opened");
         }
