@@ -536,7 +536,20 @@ public class DiscoveryScreen extends Screen {
             if (ins != null) ins.forEach(srcId ->
                 lines.add(Component.literal("← " + nodeDisplayName(srcId)).withStyle(s -> s.withColor(0xffaa66))));
         }
-        g.setTooltipForNextFrame(font, lines, Optional.empty(), mx, my);
+        // Show tooltip on whichever side of the node the cursor is NOT on, so it never
+        // obscures the children (right) or parents (left) connected to the hovered node.
+        float[] hPos = nodePos.get(hovNode);
+        int nodeCenterX = width / 2 + (int) panX + (int) hPos[0];
+        int tooltipX;
+        if (mx >= nodeCenterX) {
+            // Cursor on right half → tooltip to the left
+            int maxLineW = lines.stream().mapToInt(font::width).max().orElse(0);
+            tooltipX = Math.max(0, mx - maxLineW - 22);
+        } else {
+            // Cursor on left half → tooltip to the right (vanilla default anchor)
+            tooltipX = mx;
+        }
+        g.setTooltipForNextFrame(font, lines, Optional.empty(), tooltipX, my);
     }
 
     private String chestShort(Identifier id) {
