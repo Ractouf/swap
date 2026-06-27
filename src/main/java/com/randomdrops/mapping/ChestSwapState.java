@@ -27,6 +27,7 @@ public class ChestSwapState extends SavedData {
                 Map<String, String> swaps = new HashMap<>();
                 Set<String> discovered = new HashSet<>();
                 Map<String, Set<String>> perPlayer = new HashMap<>();
+                Map<String, String> openedPos = new HashMap<>();
                 for (String s : list) {
                     if (s.startsWith("s:")) {
                         int eq = s.indexOf('=', 2);
@@ -37,11 +38,14 @@ public class ChestSwapState extends SavedData {
                             perPlayer.computeIfAbsent(s.substring(3, sep), k -> new HashSet<>())
                                      .add(s.substring(sep + 1));
                         }
+                    } else if (s.startsWith("pos|")) {
+                        int sep = s.indexOf('|', 4);
+                        if (sep > 4) openedPos.put(s.substring(4, sep), s.substring(sep + 1));
                     } else if (s.startsWith("d:")) {
                         discovered.add(s.substring(2));
                     }
                 }
-                return new ChestSwapState(swaps, discovered, perPlayer);
+                return new ChestSwapState(swaps, discovered, perPlayer, openedPos);
             },
             state -> {
                 List<String> list = new ArrayList<>();
@@ -49,6 +53,7 @@ public class ChestSwapState extends SavedData {
                 state.discoveredSrcs.forEach(d -> list.add("d:" + d));
                 state.perPlayerDiscovered.forEach((uuid, tables) ->
                     tables.forEach(t -> list.add("pd|" + uuid + "|" + t)));
+                state.openedPositions.forEach((pos, table) -> list.add("pos|" + pos + "|" + table));
                 return list;
             }
         );
@@ -63,19 +68,23 @@ public class ChestSwapState extends SavedData {
     private final Map<String, String> swaps;
     private final Set<String> discoveredSrcs;             // global
     private final Map<String, Set<String>> perPlayerDiscovered; // UUID → table IDs
+    private final Map<String, String> openedPositions;    // "dim@x,y,z" → original table ID
     private boolean generated = false;
 
     public ChestSwapState() {
         this.swaps = new HashMap<>();
         this.discoveredSrcs = new HashSet<>();
         this.perPlayerDiscovered = new HashMap<>();
+        this.openedPositions = new HashMap<>();
     }
 
     private ChestSwapState(Map<String, String> swaps, Set<String> discoveredSrcs,
-                           Map<String, Set<String>> perPlayerDiscovered) {
+                           Map<String, Set<String>> perPlayerDiscovered,
+                           Map<String, String> openedPositions) {
         this.swaps = new HashMap<>(swaps);
         this.discoveredSrcs = new HashSet<>(discoveredSrcs);
         this.perPlayerDiscovered = new HashMap<>(perPlayerDiscovered);
+        this.openedPositions = new HashMap<>(openedPositions);
     }
 
     public static ChestSwapState get(MinecraftServer server) {
@@ -130,6 +139,16 @@ public class ChestSwapState extends SavedData {
         }
         if (discoveredSrcs.add(tableStr)) { setDirty(); return true; }
         return false;
+    }
+
+    public void storePosition(String posKey, String tableId) {
+        if (openedPositions.putIfAbsent(posKey, tableId) == null) {
+            setDirty();
+        }
+    }
+
+    public String getOriginalTable(String posKey) {
+        return openedPositions.get(posKey);
     }
 
     /**
