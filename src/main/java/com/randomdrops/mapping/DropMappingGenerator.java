@@ -32,7 +32,8 @@ public final class DropMappingGenerator {
         Items.VAULT,
         Items.FARMLAND,
         Items.PETRIFIED_OAK_SLAB,
-        Items.ENCHANTED_BOOK
+        Items.ENCHANTED_BOOK,
+        Items.FILLED_MAP
     );
 
     private static List<Item> ITEM_POOL = null;
