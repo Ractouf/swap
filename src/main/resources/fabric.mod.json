@@ -3,9 +3,9 @@
 	"id": "randomdrops",
 	"version": "${version}",
 	"name": "Random Drops",
-	"description": "Randomises block drops consistently per world — same seed, same drops, every time.",
+	"description": "Randomises drops consistently.",
 	"authors": [
-		"francois.vandeputte"
+		"Ractouf"
 	],
 	"license": "MIT",
 	"environment": "*",

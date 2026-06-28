@@ -53,11 +53,6 @@ public final class DropMappingGenerator {
 
     /**
      * Returns the item that maps to a given (block, droppedItem) pair in this world.
-     *
-     * Using the dropped item ID as the key means silk-touch variants that produce a
-     * different item naturally get a different mapping, while variants that happen to
-     * drop the same item share one mapping — exactly the design intent.
-     * Identical parameters always yield the same result.
      */
     public static Item getItem(long worldSeed, Identifier droppedItemId) {
         if (ITEM_POOL == null) throw new IllegalStateException("DropMappingGenerator.init() not called");

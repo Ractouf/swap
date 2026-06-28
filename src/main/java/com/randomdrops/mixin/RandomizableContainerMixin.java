@@ -42,7 +42,6 @@ public interface RandomizableContainerMixin {
 
         ResourceKey<LootTable> current = getLootTable();
         if (current != null) {
-            // First player to open — persist the position so later players can discover it too
             BlockPos pos = ((BlockEntity)(Object)this).getBlockPos();
             String posKey = sl.dimension().identifier() + "@" + pos.getX() + "," + pos.getY() + "," + pos.getZ();
             state.storePosition(posKey, current.identifier().toString());
@@ -57,7 +56,6 @@ public interface RandomizableContainerMixin {
             }
             setLootTable(swapped);
         } else {
-            // Loot table already consumed by a previous player — look up original by position
             BlockPos pos = ((BlockEntity)(Object)this).getBlockPos();
             String posKey = sl.dimension().identifier() + "@" + pos.getX() + "," + pos.getY() + "," + pos.getZ();
             String originalTableStr = state.getOriginalTable(posKey);
