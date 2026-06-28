@@ -1,0 +1,15 @@
+{
+  "display": {
+    "icon": { "id": "minecraft:wheat" },
+    "title": { "text": "Unexpected Yield" },
+    "description": { "text": "You reaped what you never sowed." },
+    "frame": "task",
+    "show_toast": true,
+    "announce_to_chat": true,
+    "hidden": false
+  },
+  "parent": "randomdrops:woodnt_you_know_it",
+  "criteria": {
+    "crop_broken": { "trigger": "minecraft:impossible" }
+  }
+}

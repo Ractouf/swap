@@ -1,0 +1,15 @@
+{
+  "display": {
+    "icon": { "id": "minecraft:stone_pickaxe" },
+    "title": { "text": "Amateur Geologist" },
+    "description": { "text": "It was definitely an ore. What came out is a different story." },
+    "frame": "task",
+    "show_toast": true,
+    "announce_to_chat": true,
+    "hidden": false
+  },
+  "parent": "randomdrops:root",
+  "criteria": {
+    "ore_broken": { "trigger": "minecraft:impossible" }
+  }
+}

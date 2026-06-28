@@ -8,7 +8,7 @@
     "announce_to_chat": true,
     "hidden": false
   },
-  "parent": "randomdrops:root",
+  "parent": "randomdrops:amateur_geologist",
   "criteria": {
     "ore_non_ore": { "trigger": "minecraft:impossible" }
   }

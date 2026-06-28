@@ -1,0 +1,15 @@
+{
+  "display": {
+    "icon": { "id": "minecraft:ender_pearl" },
+    "title": { "text": "End of Reason" },
+    "description": { "text": "You came to the End for answers. You found questions." },
+    "frame": "goal",
+    "show_toast": true,
+    "announce_to_chat": true,
+    "hidden": false
+  },
+  "parent": "randomdrops:nether_curious",
+  "criteria": {
+    "end_source": { "trigger": "minecraft:impossible" }
+  }
+}

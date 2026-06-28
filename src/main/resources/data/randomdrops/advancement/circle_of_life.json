@@ -1,0 +1,15 @@
+{
+  "display": {
+    "icon": { "id": "minecraft:oak_sapling" },
+    "title": { "text": "Circle of Life" },
+    "description": { "text": "A mob dropped a plant. Nature finds a way, somehow." },
+    "frame": "goal",
+    "show_toast": true,
+    "announce_to_chat": true,
+    "hidden": true
+  },
+  "parent": "randomdrops:first_harvest",
+  "criteria": {
+    "mob_drops_plant": { "trigger": "minecraft:impossible" }
+  }
+}

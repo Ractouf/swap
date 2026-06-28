@@ -1,0 +1,15 @@
+{
+  "display": {
+    "icon": { "id": "minecraft:pig_spawn_egg" },
+    "title": { "text": "Self-Sustaining" },
+    "description": { "text": "This mob dropped its own spawn egg. The cycle is complete." },
+    "frame": "challenge",
+    "show_toast": true,
+    "announce_to_chat": true,
+    "hidden": true
+  },
+  "parent": "randomdrops:spawn_egg",
+  "criteria": {
+    "got_own_egg": { "trigger": "minecraft:impossible" }
+  }
+}

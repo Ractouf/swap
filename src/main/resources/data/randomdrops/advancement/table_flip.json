@@ -3,10 +3,10 @@
     "icon": { "id": "minecraft:crafting_table" },
     "title": { "text": "Table Flip" },
     "description": { "text": "Your crafting table dropped something unexpected. No more crafting for you." },
-    "frame": "challenge",
+    "frame": "goal",
     "show_toast": true,
     "announce_to_chat": true,
-    "hidden": false
+    "hidden": true
   },
   "parent": "randomdrops:table_for_one",
   "criteria": {

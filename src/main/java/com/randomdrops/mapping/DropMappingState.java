@@ -66,6 +66,34 @@ public class DropMappingState extends SavedData {
 
     static final String TAG_KEY = "randomdrops_src";
 
+    private static final Set<String> MINERAL_ITEMS = Set.of(
+        "diamond", "emerald", "raw_iron", "raw_gold", "raw_copper",
+        "lapis_lazuli", "coal", "redstone", "quartz", "gold_nugget",
+        "netherite_scrap", "amethyst_shard", "iron_nugget",
+        "iron_ingot", "gold_ingot", "copper_ingot"
+    );
+    private static final Set<String> LUXURY_FOODS = Set.of(
+        "golden_apple", "enchanted_golden_apple", "cake",
+        "pumpkin_pie", "rabbit_stew", "suspicious_stew", "mushroom_stew",
+        "honey_bottle", "golden_carrot"
+    );
+    private static final Set<String> NETHER_SOURCES = Set.of(
+        "minecraft:blaze", "minecraft:ghast", "minecraft:wither_skeleton",
+        "minecraft:zombie_piglin", "minecraft:piglin", "minecraft:piglin_brute",
+        "minecraft:hoglin", "minecraft:zoglin", "minecraft:magma_cube", "minecraft:strider",
+        "minecraft:nether_quartz_ore", "minecraft:nether_gold_ore", "minecraft:ancient_debris",
+        "minecraft:magma_block", "minecraft:soul_sand", "minecraft:soul_soil",
+        "minecraft:crimson_nylium", "minecraft:warped_nylium", "minecraft:basalt",
+        "minecraft:blackstone", "minecraft:gilded_blackstone", "minecraft:shroomlight",
+        "minecraft:nether_wart_block", "minecraft:warped_wart_block", "minecraft:netherrack",
+        "minecraft:glowstone_dust", "minecraft:nether_wart"
+    );
+    private static final Set<String> END_SOURCES = Set.of(
+        "minecraft:enderman", "minecraft:shulker", "minecraft:endermite",
+        "minecraft:chorus_fruit", "minecraft:chorus_flower",
+        "minecraft:end_stone", "minecraft:purpur_block", "minecraft:purpur_pillar"
+    );
+
     private final Set<String> discovered;             // global pool
     private final Map<String, Set<String>> perPlayer; // UUID string → composite keys
     private long worldSeed;
@@ -155,21 +183,43 @@ public class DropMappingState extends SavedData {
             AdvancementHelper.award(player, "gone_forever", "shulker_broken");
         if ("block".equals(type) && isLogBlock(sourceId))
             AdvancementHelper.award(player, "woodnt_you_know_it", "log_non_log");
+        if ("block".equals(type) && isOreBlock(sourceId))
+            AdvancementHelper.award(player, "amateur_geologist", "ore_broken");
         if ("block".equals(type) && sourceId.contains("diamond_ore"))
             AdvancementHelper.award(player, "wrong_ore", "ore_non_ore");
+        if ("block".equals(type) && isCropSource(sourceId))
+            AdvancementHelper.award(player, "first_harvest", "crop_broken");
         if ("block".equals(type) && "minecraft:crafting_table".equals(sourceId))
             AdvancementHelper.award(player, "table_flip", "table_transformed");
+        if (NETHER_SOURCES.contains(sourceId))
+            AdvancementHelper.award(player, "nether_curious", "nether_source");
+        if (END_SOURCES.contains(sourceId))
+            AdvancementHelper.award(player, "end_of_reason", "end_source");
 
         Identifier droppedId = Identifier.tryParse(droppedItemId);
         if (droppedId != null) {
             Item replacement = DropMappingGenerator.getItem(worldSeed, droppedId);
-            if (replacement.components().has(DataComponents.FOOD)) {
-                if ("block".equals(type)) AdvancementHelper.award(player, "bon_appetit", "food_from_block");
-                if ("mob".equals(type))   AdvancementHelper.award(player, "chefs_surprise", "food_from_mob");
-            }
             Identifier replacementId = BuiltInRegistries.ITEM.getKey(replacement);
-            if (replacementId != null && replacementId.getPath().endsWith("_spawn_egg"))
-                AdvancementHelper.award(player, "spawn_egg", "got_egg");
+            if (replacementId != null) {
+                String rPath = replacementId.getPath();
+                if (replacement.components().has(DataComponents.FOOD)) {
+                    if ("block".equals(type)) AdvancementHelper.award(player, "bon_appetit", "food_from_block");
+                    if ("mob".equals(type))   AdvancementHelper.award(player, "chefs_surprise", "food_from_mob");
+                    if (LUXURY_FOODS.contains(rPath)) AdvancementHelper.award(player, "michelin_star", "got_luxury_food");
+                }
+                if (rPath.endsWith("_spawn_egg")) {
+                    AdvancementHelper.award(player, "spawn_egg", "got_egg");
+                    if ("mob".equals(type)) {
+                        Identifier srcId = Identifier.tryParse(sourceId);
+                        if (srcId != null && (srcId.getPath() + "_spawn_egg").equals(rPath))
+                            AdvancementHelper.award(player, "self_sustaining", "got_own_egg");
+                    }
+                }
+                if ("block".equals(type) && isOreBlock(sourceId) && MINERAL_ITEMS.contains(rPath))
+                    AdvancementHelper.award(player, "transmutation", "ore_transmuted");
+                if ("mob".equals(type) && isPlantItem(rPath))
+                    AdvancementHelper.award(player, "circle_of_life", "mob_drops_plant");
+            }
         }
 
         // Count against whichever pool this discovery was recorded in
@@ -184,6 +234,34 @@ public class DropMappingState extends SavedData {
 
     private static boolean isLogBlock(String sourceId) {
         return sourceId.contains("_log") || sourceId.contains("_stem") || sourceId.contains("_wood");
+    }
+
+    private static boolean isOreBlock(String sourceId) {
+        return sourceId.contains("_ore") || sourceId.contains("ancient_debris");
+    }
+
+    private static boolean isCropSource(String sourceId) {
+        String path = sourceId.contains(":") ? sourceId.substring(sourceId.indexOf(':') + 1) : sourceId;
+        return switch (path) {
+            case "wheat", "carrot", "potato", "beetroot", "sweet_berries",
+                 "glow_berries", "cocoa_beans", "nether_wart", "melon_slice",
+                 "chorus_fruit", "bamboo", "torchflower", "pitcher_plant" -> true;
+            default -> false;
+        };
+    }
+
+    private static boolean isPlantItem(String path) {
+        if (path.endsWith("_sapling") || path.endsWith("_seeds") || path.endsWith("_seed")
+                || path.endsWith("_leaves") || path.endsWith("_mushroom")) return true;
+        return Set.of(
+            "bamboo", "kelp", "cactus", "sugar_cane", "vine", "lily_pad",
+            "wheat", "carrot", "potato", "beetroot", "sweet_berries", "glow_berries",
+            "nether_wart", "moss_block", "short_grass", "fern", "dead_bush",
+            "dandelion", "poppy", "blue_orchid", "allium", "azure_bluet",
+            "red_tulip", "orange_tulip", "white_tulip", "pink_tulip", "oxeye_daisy",
+            "cornflower", "lily_of_the_valley", "wither_rose", "sunflower",
+            "lilac", "rose_bush", "peony", "torchflower", "spore_blossom"
+        ).contains(path);
     }
 
     /** Records a discovery. playerKey null = global pool; non-null = per-player pool. */

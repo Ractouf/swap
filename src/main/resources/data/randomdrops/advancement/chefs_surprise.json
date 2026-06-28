@@ -3,12 +3,12 @@
     "icon": { "id": "minecraft:cooked_beef" },
     "title": { "text": "Chef's Surprise" },
     "description": { "text": "Kill mob, get food. Not from the mob you expected." },
-    "frame": "task",
+    "frame": "challenge",
     "show_toast": true,
     "announce_to_chat": true,
-    "hidden": false
+    "hidden": true
   },
-  "parent": "randomdrops:root",
+  "parent": "randomdrops:michelin_star",
   "criteria": {
     "food_from_mob": { "trigger": "minecraft:impossible" }
   }
