@@ -6,9 +6,12 @@ import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.client.input.CharacterEvent;
 import net.minecraft.client.input.KeyEvent;
 import net.minecraft.client.input.MouseButtonEvent;
+import net.minecraft.core.HolderLookup;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.Identifier;
+import net.minecraft.world.flag.FeatureFlagSet;
+import net.minecraft.world.item.CreativeModeTab;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
@@ -32,6 +35,11 @@ public class DiscoveryScreen extends Screen {
     private static final int SEARCH_W  = 180;
     private static final int HEADER_H  = SEARCH_Y + SEARCH_H + 6;
 
+    // Missing panel layout
+    private static final int MROW_H    = 18;
+    private static final int MHDR_H    = 14;
+    private static final int MINDENT   = 24;
+
     private static final int C_BG           = 0xFF0d0d1a;
     private static final int C_NODE         = 0xFF1a1a30;
     private static final int C_NODE_H       = 0xFF2a2a50;
@@ -49,6 +57,15 @@ public class DiscoveryScreen extends Screen {
     private static final int C_SEARCH_BG    = 0xFF111128;
     private static final int C_SEARCH_BORDER= 0xFF505090;
     private static final int C_SEARCH_FOCUS = 0xFF7070c0;
+    private static final int C_GROUP_HDR    = 0xFF1a1a35;
+
+    private static final Set<String> SKIP_TABS = Set.of("search", "op_blocks", "inventory", "hotbar");
+
+    private static final List<String> TAB_PRIORITY = List.of(
+        "building_blocks", "colored_blocks", "natural_blocks", "functional_blocks",
+        "redstone_blocks", "tools_and_utilities", "combat", "food_and_drinks",
+        "ingredients", "spawn_eggs"
+    );
 
     // ── special entity sources ─────────────────────────────────────────────
     private static final Map<String, Item>   SPECIAL_ICONS = new HashMap<>();
@@ -60,8 +77,9 @@ public class DiscoveryScreen extends Screen {
 
     // ── tabs ───────────────────────────────────────────────────────────────
     enum Tab {
-        DROPS ("Drops",      Items.GRASS_BLOCK),
-        CHESTS("Chest Loot", Items.CHEST);
+        DROPS  ("Drops",      Items.GRASS_BLOCK),
+        CHESTS ("Chest Loot", Items.CHEST),
+        MISSING("Missing",    Items.SPYGLASS);
         final String label; final Item icon;
         Tab(String l, Item i) { label = l; icon = i; }
     }
@@ -72,13 +90,28 @@ public class DiscoveryScreen extends Screen {
     private final Map<Identifier, Set<Identifier>> drops      = new LinkedHashMap<>();
     private final Map<Identifier, String>          nodeType   = new LinkedHashMap<>();
     private final Map<Identifier, Identifier>      chestSwaps = new LinkedHashMap<>();
+    /** All possible source IDs from the server ("block|id" or "mob|id"). */
+    private final List<String> allSources = new ArrayList<>();
 
     // ── layout ────────────────────────────────────────────────────────────
     private final Map<Identifier, float[]>   nodePos        = new LinkedHashMap<>();
     private Map<Identifier, Set<Identifier>> activeEdges    = Collections.emptyMap();
     private Map<Identifier, Set<Identifier>> activeIncoming = Collections.emptyMap();
 
+    // ── missing panel state ────────────────────────────────────────────────
+    private record MissingEntry(String type, Identifier id) {}
+    private record MissingGroup(String tabName, List<MissingEntry> items) {}
+    private List<MissingGroup> missingGroups = null;
+    private int missingScrollY = 0;
+    private final Set<Integer> collapsedGroups = new HashSet<>();
+    /** Persists collapsed/expanded state across screen instances. Null = not yet initialised. */
+    private static Set<Integer> persistedCollapsedGroups = null;
+
     // ── state ─────────────────────────────────────────────────────────────
+    private final boolean missingTabUnlocked;
+    private int searchCountDrops   = 0;
+    private int searchCountChests  = 0;
+    private int searchCountMissing = 0;
     private Identifier hovNode     = null;
     private float      panX = 0, panY = 0;
     private String           searchText    = "";
@@ -93,22 +126,35 @@ public class DiscoveryScreen extends Screen {
     // ── constructor ───────────────────────────────────────────────────────
     public DiscoveryScreen(List<String> entries) {
         super(Component.literal("Discoveries"));
+        boolean unlocked = false;
         for (String entry : entries) {
             String[] p = entry.split("\\|", 3);
-            if (p.length != 3) continue;
-            Identifier src = Identifier.tryParse(p[1]);
-            Identifier dst = Identifier.tryParse(p[2]);
-            if (src == null || dst == null) continue;
+            if (p.length < 2) continue;
             switch (p[0]) {
                 case "block", "mob" -> {
+                    if (p.length < 3) break;
+                    Identifier src = Identifier.tryParse(p[1]);
+                    Identifier dst = Identifier.tryParse(p[2]);
+                    if (src == null || dst == null) break;
                     drops.computeIfAbsent(src, k -> new LinkedHashSet<>()).add(dst);
                     nodeType.put(src, p[0]);
                 }
-                case "chest" -> chestSwaps.put(src, dst);
+                case "chest" -> {
+                    if (p.length < 3) break;
+                    Identifier src = Identifier.tryParse(p[1]);
+                    Identifier dst = Identifier.tryParse(p[2]);
+                    if (src != null && dst != null) chestSwaps.put(src, dst);
+                }
+                case "src" -> {
+                    // "src|block|minecraft:oak_button" or "src|mob|minecraft:cow"
+                    if (p.length < 3) break;
+                    allSources.add(p[1] + "|" + p[2]);
+                }
+                case "flag" -> { if ("missing_tab_unlocked".equals(p[1])) unlocked = true; }
             }
         }
-        // Synthesize spawn-egg → mob chains:
-        // If a block drops a mob's spawn egg, chain it: block → egg → mob drops
+        this.missingTabUnlocked = unlocked;
+        // Synthesize spawn-egg → mob chains
         for (Identifier mobId : new ArrayList<>(nodeType.keySet())) {
             if (!"mob".equals(nodeType.get(mobId))) continue;
             Identifier eggId = Identifier.fromNamespaceAndPath(
@@ -117,7 +163,6 @@ public class DiscoveryScreen extends Screen {
             if (!eggIsTarget) continue;
             Set<Identifier> mobDrops = drops.get(mobId);
             if (mobDrops == null || mobDrops.isEmpty()) continue;
-            // Add edges from egg → mob's drops; egg icon will be the item itself (no nodeType entry)
             drops.computeIfAbsent(eggId, k -> new LinkedHashSet<>()).addAll(mobDrops);
             drops.remove(mobId);
             nodeType.remove(mobId);
@@ -143,7 +188,6 @@ public class DiscoveryScreen extends Screen {
                 }
             }
             if (!pannedToItem) {
-                // No held item — scroll to the very top, horizontally centred
                 panX = 0;
                 panY = NODE_SIZE / 2f;
             }
@@ -156,17 +200,31 @@ public class DiscoveryScreen extends Screen {
         nodePos.clear();
         visibleCache = null; visibleCacheKey = null;
         if (currentTab == Tab.DROPS) rebuildDropLayout();
-        else                          rebuildChestLayout();
+        else if (currentTab == Tab.CHESTS) rebuildChestLayout();
+        // MISSING tab has no node-graph layout
     }
 
     private void updateSearchMatches() {
         searchMatches.clear();
         matchIndex = 0;
+        missingScrollY = 0;
+        searchCountDrops = searchCountChests = searchCountMissing = 0;
         if (searchText.isEmpty()) return;
         String q = searchText.toLowerCase();
         for (Identifier id : nodePos.keySet())
             if (id.toString().toLowerCase().contains(q)) searchMatches.add(id);
         if (!searchMatches.isEmpty()) panToNode(searchMatches.get(0));
+        // Cross-tab badge counts
+        searchCountDrops  = (int) drops.keySet().stream()
+            .filter(id -> id.toString().toLowerCase().contains(q)).count();
+        searchCountChests = (int) chestSwaps.keySet().stream()
+            .filter(id -> id.toString().toLowerCase().contains(q)).count();
+        if (missingTabUnlocked) {
+            if (missingGroups == null) buildMissingGroups();
+            searchCountMissing = (int) missingGroups.stream()
+                .flatMap(g -> g.items().stream())
+                .filter(this::matchesMissingSearch).count();
+        }
     }
 
     private void panToNode(Identifier id) {
@@ -193,7 +251,7 @@ public class DiscoveryScreen extends Screen {
         activeIncoming = inc;
 
         List<Set<Identifier>> components = connectedComponents(all, drops);
-        components.sort((a, b) -> b.size() - a.size()); // largest first
+        components.sort((a, b) -> b.size() - a.size());
 
         int yOffset = 0;
         for (Set<Identifier> comp : components) {
@@ -204,7 +262,6 @@ public class DiscoveryScreen extends Screen {
 
     private int layoutComponent(Set<Identifier> comp,
                                 Map<Identifier, Set<Identifier>> edges, int yOffset) {
-        // Kahn's topological sort + longest-path depth
         Map<Identifier, Integer> inDeg = new HashMap<>();
         for (Identifier n : comp) inDeg.put(n, 0);
         for (Identifier src : comp) {
@@ -238,11 +295,9 @@ public class DiscoveryScreen extends Screen {
         for (int i = 0; i <= maxDepth; i++) cols.add(new ArrayList<>());
         for (Identifier n : comp) cols.get(depth.get(n)).add(n);
 
-        // Sort rightmost column alphabetically, then each preceding column by barycenter
         cols.get(maxDepth).sort(Comparator.comparing(Identifier::toString));
         placeColumn(cols.get(maxDepth), maxDepth, maxDepth, yOffset);
         for (int c = maxDepth - 1; c >= 0; c--) {
-            final int fc = c;
             cols.get(c).sort((a, b) -> {
                 float ya = baryOf(edges.get(a), comp);
                 float yb = baryOf(edges.get(b), comp);
@@ -339,15 +394,25 @@ public class DiscoveryScreen extends Screen {
     public void extractRenderState(GuiGraphicsExtractor g, int mx, int my, float partial) {
         g.fill(0, 0, width, height, C_BG);
 
+        if (currentTab == Tab.MISSING) {
+            renderMissingPanel(g, mx, my);
+        } else {
+            renderGraph(g, mx, my);
+        }
+
+        g.fill(0, 0, width, SEARCH_Y, C_BG);
+        drawTabBar(g, mx, my);
+        drawSearchBar(g);
+    }
+
+    private void renderGraph(GuiGraphicsExtractor g, int mx, int my) {
         int originX = width / 2 + (int) panX;
         int originY = HEADER_H + (int) panY;
 
-        // Hover detection (below header only)
         hovNode = null;
         if (my >= HEADER_H) {
             int cmx = mx - originX, cmy = my - originY;
             int half = NODE_SIZE / 2;
-            // viewport bounds in graph space
             int gLeft = -originX - half, gRight = width - originX + half;
             int gTop  = HEADER_H - originY - half, gBottom = height - originY + half;
             for (var e : nodePos.entrySet()) {
@@ -400,7 +465,7 @@ public class DiscoveryScreen extends Screen {
             }
         }
 
-        // Nodes — skip those outside the viewport
+        // Nodes
         int half = NODE_SIZE / 2;
         for (var e : nodePos.entrySet()) {
             Identifier id = e.getKey();
@@ -413,20 +478,224 @@ public class DiscoveryScreen extends Screen {
             drawNode(g, iconFor(id), sx, sy, hov, vis);
         }
 
-        // Tooltip
         if (hovNode != null) drawTooltip(g, mx, my);
 
-        // Empty state
         if (nodePos.isEmpty()) {
             g.centeredText(font,
-                Component.literal("No discoveries yet — pick up randomised drops to see them here"),
+                Component.literal("No discoveries yet, pick up randomised drops to see them here"),
+                width / 2, height / 2, 0xFF777799);
+        }
+    }
+
+    // ── Missing panel ──────────────────────────────────────────────────────
+
+    private void renderMissingPanel(GuiGraphicsExtractor g, int mx, int my) {
+        if (missingGroups == null) buildMissingGroups();
+
+        int y = HEADER_H - missingScrollY;
+        int totalH = 0;
+        boolean anyVisible = false;
+
+        if (missingGroups.isEmpty()) {
+            g.centeredText(font, Component.literal("All sources discovered!"),
+                width / 2, height / 2, 0xFF77FF77);
+            return;
+        }
+
+        for (int gi = 0; gi < missingGroups.size(); gi++) {
+            MissingGroup group = missingGroups.get(gi);
+            List<MissingEntry> filtered = group.items().stream()
+                .filter(this::matchesMissingSearch).toList();
+            if (filtered.isEmpty()) continue;
+            anyVisible = true;
+            boolean collapsed = collapsedGroups.contains(gi);
+
+            // Group header
+            if (y + MHDR_H > HEADER_H && y < height) {
+                g.fill(0, Math.max(y, HEADER_H), width, Math.min(y + MHDR_H, height), C_GROUP_HDR);
+                String arrow = collapsed ? "▶" : "▼";
+                String label = arrow + " " + group.tabName() + " (" + filtered.size() + " missing)";
+                int textY = y + (MHDR_H - 7) / 2;
+                if (textY >= HEADER_H)
+                    g.text(font, Component.literal(label), 6, textY, 0xFFCCCCCC);
+            }
+            y += MHDR_H;
+            totalH += MHDR_H;
+
+            if (!collapsed) {
+                for (MissingEntry entry : filtered) {
+                    if (y + MROW_H > HEADER_H && y < height) {
+                        boolean hovered = my >= Math.max(y, HEADER_H) && my < y + MROW_H;
+                        int iconY = y + (MROW_H - ICON_SIZE) / 2;
+                        Item item = itemForMissing(entry.type(), entry.id());
+                        if (iconY >= HEADER_H - ICON_SIZE)
+                            g.item(new ItemStack(item), MINDENT, iconY);
+                        int textY = y + (MROW_H - 7) / 2;
+                        int textColor = hovered ? 0xFFFFFFFF : 0xFF999999;
+                        if (textY >= HEADER_H)
+                            g.text(font, Component.literal(new ItemStack(item).getHoverName().getString()),
+                                MINDENT + ICON_SIZE + 4, textY, textColor);
+                        if (hovered) {
+                            g.setTooltipForNextFrame(font,
+                                List.of(Component.literal(entry.id().toString())
+                                    .withStyle(s -> s.withColor(0x888888))),
+                                Optional.empty(), mx, my);
+                        }
+                    }
+                    y += MROW_H;
+                    totalH += MROW_H;
+                }
+            }
+        }
+
+        if (!anyVisible) {
+            g.centeredText(font, Component.literal("No results for \"" + searchText + "\""),
                 width / 2, height / 2, 0xFF777799);
         }
 
-        // ── Header drawn LAST so it renders on top of the graph content ──
-        g.fill(0, 0, width, HEADER_H, C_BG);
-        drawTabBar(g, mx, my);
-        drawSearchBar(g);
+        // Clamp scroll to content
+        int maxScroll = Math.max(0, totalH - (height - HEADER_H));
+        if (missingScrollY > maxScroll) missingScrollY = maxScroll;
+    }
+
+    /** Expands groups that have search matches; restores persisted state when search is cleared. */
+    private void updateMissingCollapse() {
+        if (missingGroups == null) return;
+        if (searchText.isEmpty()) {
+            collapsedGroups.clear();
+            if (persistedCollapsedGroups != null) collapsedGroups.addAll(persistedCollapsedGroups);
+            return;
+        }
+        for (int gi = 0; gi < missingGroups.size(); gi++) {
+            boolean hasMatch = missingGroups.get(gi).items().stream().anyMatch(this::matchesMissingSearch);
+            if (hasMatch) collapsedGroups.remove(gi);
+        }
+    }
+
+    private boolean matchesMissingSearch(MissingEntry entry) {
+        if (searchText.isEmpty()) return true;
+        String q = searchText.toLowerCase();
+        if (entry.id().toString().toLowerCase().contains(q)) return true;
+        Item item = itemForMissing(entry.type(), entry.id());
+        return new ItemStack(item).getHoverName().getString().toLowerCase().contains(q);
+    }
+
+    private void buildMissingGroups() {
+        Set<String> discoveredSrcs = new HashSet<>();
+        for (var entry : nodeType.entrySet())
+            discoveredSrcs.add(entry.getValue() + "|" + entry.getKey());
+
+        // "minecraft:chest" → "block", "minecraft:cow" → "mob"
+        Map<String, String> sourceTypeMap = new HashMap<>();
+        for (String src : allSources) {
+            String[] p = src.split("\\|", 2);
+            if (p.length == 2) sourceTypeMap.put(p[1], p[0]);
+        }
+
+        Minecraft mc = Minecraft.getInstance();
+        if (mc.level == null) { missingGroups = List.of(); return; }
+        FeatureFlagSet features = mc.level.enabledFeatures();
+        HolderLookup.Provider holders = mc.level.registryAccess();
+
+        Map<String, List<MissingEntry>> byTab = new LinkedHashMap<>();
+        Set<String> matchedSrcs = new HashSet<>();
+
+        // Build path→tab map, then produce a priority-ordered list so that redstone_blocks
+        // is processed before combat (ensures TNT stays in the redstone group).
+        Map<String, CreativeModeTab> tabByPath = new LinkedHashMap<>();
+        for (var e : BuiltInRegistries.CREATIVE_MODE_TAB.entrySet()) {
+            String p = e.getKey().identifier().getPath();
+            if (!SKIP_TABS.contains(p)) tabByPath.put(p, e.getValue());
+        }
+        List<Map.Entry<String, CreativeModeTab>> orderedTabs = new ArrayList<>();
+        Set<String> added = new HashSet<>();
+        for (String p : TAB_PRIORITY) {
+            CreativeModeTab t = tabByPath.get(p);
+            if (t != null) { orderedTabs.add(Map.entry(p, t)); added.add(p); }
+        }
+        for (var e : tabByPath.entrySet()) {
+            if (!added.contains(e.getKey())) orderedTabs.add(e);
+        }
+
+        for (var tabPair : orderedTabs) {
+            String tabPath = tabPair.getKey();
+            CreativeModeTab tab = tabPair.getValue();
+            try {
+                tab.buildContents(new CreativeModeTab.ItemDisplayParameters(features, false, holders));
+            } catch (Exception ignored) { continue; }
+
+            String tabName = tab.getDisplayName().getString();
+            // Spawn egg → mob mapping only applies in the spawn_eggs tab
+            boolean isSpawnEggsTab = tabPath.equals("spawn_eggs");
+            List<MissingEntry> groupItems = new ArrayList<>();
+            Set<Identifier> seenIds = new LinkedHashSet<>();
+
+            for (ItemStack stack : tab.getDisplayItems()) {
+                Identifier itemId = BuiltInRegistries.ITEM.getKey(stack.getItem());
+                if (itemId == null) continue;
+
+                String type = sourceTypeMap.get(itemId.toString());
+                Identifier sourceId = itemId;
+
+                if (type == null && isSpawnEggsTab) {
+                    // Spawn egg → mob source: "cow_spawn_egg" → "cow"
+                    String path = itemId.getPath();
+                    if (path.endsWith("_spawn_egg")) {
+                        Identifier mobId = Identifier.fromNamespaceAndPath(itemId.getNamespace(),
+                            path.substring(0, path.length() - "_spawn_egg".length()));
+                        type = sourceTypeMap.get(mobId.toString());
+                        if (type != null) sourceId = mobId;
+                    }
+                }
+
+                if (type == null) continue;
+                String srcKey = type + "|" + sourceId;
+                if (discoveredSrcs.contains(srcKey)) continue;
+                if (matchedSrcs.contains(srcKey)) continue;
+                if (!seenIds.add(sourceId)) continue;
+
+                groupItems.add(new MissingEntry(type, sourceId));
+                matchedSrcs.add(srcKey);
+            }
+
+            // TNT was moved to the combat tab in MC 26.2 but belongs with redstone.
+            // Force it into the redstone_blocks group if not already claimed elsewhere.
+            if (tabPath.equals("redstone_blocks")) {
+                String tntKey = "block|minecraft:tnt";
+                if (!discoveredSrcs.contains(tntKey) && !matchedSrcs.contains(tntKey)
+                        && sourceTypeMap.containsKey("minecraft:tnt")) {
+                    groupItems.add(new MissingEntry("block", Identifier.fromNamespaceAndPath("minecraft", "tnt")));
+                    matchedSrcs.add(tntKey);
+                }
+            }
+
+            if (!groupItems.isEmpty()) byTab.put(tabName, groupItems);
+        }
+        // Items not in any creative tab (legacy blocks, unobtainable mobs) are intentionally omitted
+
+        missingGroups = byTab.entrySet().stream()
+            .map(e -> new MissingGroup(e.getKey(), e.getValue()))
+            .toList();
+        if (persistedCollapsedGroups == null) {
+            persistedCollapsedGroups = new HashSet<>();
+            for (int i = 0; i < missingGroups.size(); i++) persistedCollapsedGroups.add(i);
+        }
+        collapsedGroups.clear();
+        collapsedGroups.addAll(persistedCollapsedGroups);
+    }
+
+    private Item itemForMissing(String type, Identifier id) {
+        if ("mob".equals(type)) {
+            Item special = SPECIAL_ICONS.get(id.toString());
+            if (special != null) return special;
+            Identifier egg = Identifier.fromNamespaceAndPath(id.getNamespace(), id.getPath() + "_spawn_egg");
+            Item e = BuiltInRegistries.ITEM.getValue(egg);
+            if (e != null && e != Items.AIR) return e;
+            Item direct = BuiltInRegistries.ITEM.getValue(id);
+            return (direct != null && direct != Items.AIR) ? direct : Items.BONE;
+        }
+        Item it = BuiltInRegistries.ITEM.getValue(id);
+        return (it == null || it == Items.AIR) ? Items.BARRIER : it;
     }
 
     private Set<Identifier> computeVisible() {
@@ -448,11 +717,19 @@ public class DiscoveryScreen extends Screen {
         return visibleCache = visible;
     }
 
+    private List<Tab> visibleTabs() {
+        List<Tab> tabs = new ArrayList<>();
+        for (Tab tab : Tab.values())
+            if (tab != Tab.MISSING || missingTabUnlocked) tabs.add(tab);
+        return tabs;
+    }
+
     private void drawTabBar(GuiGraphicsExtractor g, int mx, int my) {
-        Tab[] tabs = Tab.values();
-        int x0 = width / 2 - tabs.length * TAB_W / 2;
-        for (Tab tab : tabs) {
-            int tx = x0 + tab.ordinal() * TAB_W;
+        List<Tab> tabs = visibleTabs();
+        int x0 = width / 2 - tabs.size() * TAB_W / 2;
+        for (int i = 0; i < tabs.size(); i++) {
+            Tab tab = tabs.get(i);
+            int tx = x0 + i * TAB_W;
             boolean active = tab == currentTab;
             boolean hov = mx >= tx && mx < tx + TAB_W && my >= TAB_Y && my < TAB_Y + TAB_H;
             int bg = active ? C_TAB_ON : (hov ? 0xFF202040 : C_TAB_OFF);
@@ -462,8 +739,14 @@ public class DiscoveryScreen extends Screen {
             g.fill(tx,             TAB_Y + TAB_H - 1, tx + TAB_W,     TAB_Y + TAB_H,  bd);
             g.fill(tx,             TAB_Y,             tx + 1,         TAB_Y + TAB_H,  bd);
             g.fill(tx + TAB_W - 1, TAB_Y,             tx + TAB_W,     TAB_Y + TAB_H,  bd);
+            int count = searchText.isEmpty() ? 0 : switch (tab) {
+                case DROPS   -> searchCountDrops;
+                case CHESTS  -> searchCountChests;
+                case MISSING -> searchCountMissing;
+            };
+            String label = count > 0 ? tab.label + " (" + count + ")" : tab.label;
             g.item(new ItemStack(tab.icon), tx + 4, TAB_Y + (TAB_H - ICON_SIZE) / 2);
-            g.text(font, Component.literal(tab.label),
+            g.text(font, Component.literal(label),
                 tx + 24, TAB_Y + (TAB_H - 8) / 2, active ? 0xFFFFFFFF : 0xFFAAAAAA);
         }
         g.fill(0, TAB_Y + TAB_H, width, TAB_Y + TAB_H + 1, C_DIVIDER);
@@ -497,7 +780,9 @@ public class DiscoveryScreen extends Screen {
         if ("mob".equals(type)) {
             Identifier egg = Identifier.fromNamespaceAndPath(id.getNamespace(), id.getPath() + "_spawn_egg");
             Item e = BuiltInRegistries.ITEM.getValue(egg);
-            return (e == null || e == Items.AIR) ? Items.BONE : e;
+            if (e != null && e != Items.AIR) return e;
+            Item direct = BuiltInRegistries.ITEM.getValue(id);
+            return (direct != null && direct != Items.AIR) ? direct : Items.BONE;
         }
         return safeItem(id);
     }
@@ -536,17 +821,13 @@ public class DiscoveryScreen extends Screen {
             if (ins != null) ins.forEach(srcId ->
                 lines.add(Component.literal("← " + nodeDisplayName(srcId)).withStyle(s -> s.withColor(0xffaa66))));
         }
-        // Show tooltip on whichever side of the node the cursor is NOT on, so it never
-        // obscures the children (right) or parents (left) connected to the hovered node.
         float[] hPos = nodePos.get(hovNode);
         int nodeCenterX = width / 2 + (int) panX + (int) hPos[0];
         int tooltipX;
         if (mx >= nodeCenterX) {
-            // Cursor on right half → tooltip to the left
             int maxLineW = lines.stream().mapToInt(font::width).max().orElse(0);
             tooltipX = Math.max(0, mx - maxLineW - 22);
         } else {
-            // Cursor on left half → tooltip to the right (vanilla default anchor)
             tooltipX = mx;
         }
         g.setTooltipForNextFrame(font, lines, Optional.empty(), tooltipX, my);
@@ -591,26 +872,64 @@ public class DiscoveryScreen extends Screen {
         int mx = (int) event.x(), my = (int) event.y();
         if (event.button() == 0) {
             // Tab bar
-            Tab[] tabs = Tab.values();
-            int x0 = width / 2 - tabs.length * TAB_W / 2;
-            for (Tab tab : tabs) {
-                int tx = x0 + tab.ordinal() * TAB_W;
+            List<Tab> tabs = visibleTabs();
+            int x0 = width / 2 - tabs.size() * TAB_W / 2;
+            for (int i = 0; i < tabs.size(); i++) {
+                Tab tab = tabs.get(i);
+                int tx = x0 + i * TAB_W;
                 if (mx >= tx && mx < tx + TAB_W && my >= TAB_Y && my < TAB_Y + TAB_H) {
                     if (tab != currentTab) {
                         currentTab = tab; panX = panY = 0;
-                        searchText = ""; searchMatches.clear(); matchIndex = 0;
+                        searchMatches.clear(); matchIndex = 0;
                         rebuildLayout();
+                        if (!searchText.isEmpty()) {
+                            updateSearchMatches();
+                            if (currentTab == Tab.MISSING) updateMissingCollapse();
+                        }
                     }
                     searchFocused = false; return true;
                 }
             }
+
+            if (currentTab == Tab.MISSING && missingGroups != null && my >= HEADER_H) {
+                int y = HEADER_H - missingScrollY;
+                for (int gi = 0; gi < missingGroups.size(); gi++) {
+                    MissingGroup group = missingGroups.get(gi);
+                    // Mirror the render filter exactly so y positions match
+                    List<MissingEntry> filtered = group.items().stream()
+                        .filter(this::matchesMissingSearch).toList();
+                    if (filtered.isEmpty()) continue;
+                    if (my >= y && my < y + MHDR_H) {
+                        if (collapsedGroups.contains(gi)) collapsedGroups.remove(gi);
+                        else collapsedGroups.add(gi);
+                        if (persistedCollapsedGroups != null) {
+                            persistedCollapsedGroups.clear();
+                            persistedCollapsedGroups.addAll(collapsedGroups);
+                        }
+                        return true;
+                    }
+                    y += MHDR_H;
+                    if (!collapsedGroups.contains(gi)) y += filtered.size() * MROW_H;
+                }
+                return true;
+            }
+
             // Search box
             boolean inSearch = mx >= searchX && mx < searchX + SEARCH_W
-                            && my >= SEARCH_Y && my < SEARCH_Y + SEARCH_H;
+                && my >= SEARCH_Y && my < SEARCH_Y + SEARCH_H;
             searchFocused = inSearch;
             if (inSearch) return true;
         }
         return super.mouseClicked(event, wasDragging);
+    }
+
+    @Override
+    public boolean mouseScrolled(double mouseX, double mouseY, double deltaX, double deltaY) {
+        if (currentTab == Tab.MISSING) {
+            missingScrollY = Math.max(0, missingScrollY - (int)(deltaY * 12));
+            return true;
+        }
+        return super.mouseScrolled(mouseX, mouseY, deltaX, deltaY);
     }
 
     @Override
@@ -619,6 +938,7 @@ public class DiscoveryScreen extends Screen {
         if (searchFocused && cp >= 32 && cp != 127) {
             searchText += Character.toString(cp);
             updateSearchMatches();
+            if (currentTab == Tab.MISSING) updateMissingCollapse();
             return true;
         }
         return super.charTyped(event);
@@ -631,6 +951,7 @@ public class DiscoveryScreen extends Screen {
             if (key == GLFW.GLFW_KEY_BACKSPACE && !searchText.isEmpty()) {
                 searchText = searchText.substring(0, searchText.length() - 1);
                 updateSearchMatches();
+                if (currentTab == Tab.MISSING) updateMissingCollapse();
                 return true;
             }
             if ((key == GLFW.GLFW_KEY_ENTER || key == GLFW.GLFW_KEY_KP_ENTER)
@@ -643,7 +964,7 @@ public class DiscoveryScreen extends Screen {
                 if (!searchText.isEmpty()) {
                     searchText = ""; searchMatches.clear(); matchIndex = 0; return true;
                 }
-                searchFocused = false; // fall through to close screen
+                searchFocused = false;
             }
         }
         return super.keyPressed(event);
@@ -651,7 +972,9 @@ public class DiscoveryScreen extends Screen {
 
     @Override
     public boolean mouseDragged(MouseButtonEvent event, double dx, double dy) {
-        if (event.button() == 0) { panX += (float) dx; panY += (float) dy; return true; }
+        if (event.button() == 0 && currentTab != Tab.MISSING) {
+            panX += (float) dx; panY += (float) dy; return true;
+        }
         return super.mouseDragged(event, dx, dy);
     }
 
