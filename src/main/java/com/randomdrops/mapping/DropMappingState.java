@@ -77,23 +77,6 @@ public class DropMappingState extends SavedData {
         "pumpkin_pie", "rabbit_stew", "suspicious_stew", "mushroom_stew",
         "honey_bottle", "golden_carrot"
     );
-    private static final Set<String> NETHER_SOURCES = Set.of(
-        "minecraft:blaze", "minecraft:ghast", "minecraft:wither_skeleton",
-        "minecraft:zombie_piglin", "minecraft:piglin", "minecraft:piglin_brute",
-        "minecraft:hoglin", "minecraft:zoglin", "minecraft:magma_cube", "minecraft:strider",
-        "minecraft:nether_quartz_ore", "minecraft:nether_gold_ore", "minecraft:ancient_debris",
-        "minecraft:magma_block", "minecraft:soul_sand", "minecraft:soul_soil",
-        "minecraft:crimson_nylium", "minecraft:warped_nylium", "minecraft:basalt",
-        "minecraft:blackstone", "minecraft:gilded_blackstone", "minecraft:shroomlight",
-        "minecraft:nether_wart_block", "minecraft:warped_wart_block", "minecraft:netherrack",
-        "minecraft:glowstone_dust", "minecraft:nether_wart"
-    );
-    private static final Set<String> END_SOURCES = Set.of(
-        "minecraft:enderman", "minecraft:shulker", "minecraft:endermite",
-        "minecraft:chorus_fruit", "minecraft:chorus_flower",
-        "minecraft:end_stone", "minecraft:purpur_block", "minecraft:purpur_pillar"
-    );
-
     private final Set<String> discovered;             // global pool
     private final Map<String, Set<String>> perPlayer; // UUID string → composite keys
     private long worldSeed;
@@ -191,11 +174,6 @@ public class DropMappingState extends SavedData {
             AdvancementHelper.award(player, "first_harvest", "crop_broken");
         if ("block".equals(type) && "minecraft:crafting_table".equals(sourceId))
             AdvancementHelper.award(player, "table_flip", "table_transformed");
-        if (NETHER_SOURCES.contains(sourceId))
-            AdvancementHelper.award(player, "nether_curious", "nether_source");
-        if (END_SOURCES.contains(sourceId))
-            AdvancementHelper.award(player, "end_of_reason", "end_source");
-
         Identifier droppedId = Identifier.tryParse(droppedItemId);
         if (droppedId != null) {
             Item replacement = DropMappingGenerator.getItem(worldSeed, droppedId);
