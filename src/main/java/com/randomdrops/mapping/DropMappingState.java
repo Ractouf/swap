@@ -65,7 +65,7 @@ public class DropMappingState extends SavedData {
         DataFixTypes.SAVED_DATA_COMMAND_STORAGE
     );
 
-    static final String TAG_KEY = "randomdrops_src";
+    public static final String TAG_KEY = "randomdrops_src";
 
     private static final Set<String> MINERAL_ITEMS = Set.of(
         "diamond", "emerald", "raw_iron", "raw_gold", "raw_copper",
