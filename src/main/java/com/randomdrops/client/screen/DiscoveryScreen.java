@@ -33,7 +33,6 @@ public class DiscoveryScreen extends Screen {
     private static final int SEARCH_Y  = TAB_Y + TAB_H + 4;
     private static final int SEARCH_H  = 14;
     private static final int SEARCH_W  = 180;
-    private static final int TOGGLE_W  = 38;
     private static final int HEADER_H  = SEARCH_Y + SEARCH_H + 6;
 
     // Missing panel layout
@@ -120,7 +119,6 @@ public class DiscoveryScreen extends Screen {
     private int              searchX;
     private List<Identifier> searchMatches = new ArrayList<>();
     private int              matchIndex    = 0;
-    private boolean          showFullCluster = false;
     private Set<Identifier>  visibleCache   = null;
     private String           visibleCacheKey = null;
 
@@ -183,8 +181,7 @@ public class DiscoveryScreen extends Screen {
         visibleCache = null; visibleCacheKey = null;
         if (currentTab == Tab.DROPS) {
             rebuildDropLayout();
-            if (showFullCluster) buildFullClusterLayout();
-            else if (!searchText.isEmpty()) buildNeighbourhoodLayout();
+            if (!searchText.isEmpty()) buildNeighbourhoodLayout();
         } else if (currentTab == Tab.CHESTS) {
             rebuildChestLayout();
         }
@@ -196,13 +193,13 @@ public class DiscoveryScreen extends Screen {
         matchIndex = 0;
         missingScrollY = 0;
         searchCountDrops = searchCountChests = searchCountMissing = 0;
-        if (currentTab == Tab.DROPS && !showFullCluster) {
+        if (currentTab == Tab.DROPS) {
             nodePos.clear();
             visibleCache = null; visibleCacheKey = null;
         }
         if (searchText.isEmpty()) return;
         String q = searchText.toLowerCase();
-        if (currentTab == Tab.DROPS && !showFullCluster) buildNeighbourhoodLayout();
+        if (currentTab == Tab.DROPS) buildNeighbourhoodLayout();
         for (Identifier id : nodePos.keySet())
             if (id.toString().toLowerCase().contains(q)) searchMatches.add(id);
         if (!searchMatches.isEmpty()) panToNode(searchMatches.get(0));
@@ -236,20 +233,6 @@ public class DiscoveryScreen extends Screen {
             for (Identifier dst : e.getValue())
                 inc.computeIfAbsent(dst, k -> new LinkedHashSet<>()).add(e.getKey());
         activeIncoming = inc;
-        // nodePos populated by buildNeighbourhoodLayout() or buildFullClusterLayout()
-    }
-
-    private void buildFullClusterLayout() {
-        Set<Identifier> all = new LinkedHashSet<>();
-        drops.keySet().forEach(all::add);
-        drops.values().forEach(all::addAll);
-        List<Set<Identifier>> components = connectedComponents(all, drops);
-        components.sort((a, b) -> b.size() - a.size());
-        int yOffset = 0;
-        for (Set<Identifier> comp : components) {
-            int h = layoutComponent(comp, drops, yOffset);
-            yOffset += h + COMP_GAP;
-        }
     }
 
     private void buildNeighbourhoodLayout() {
@@ -739,8 +722,8 @@ public class DiscoveryScreen extends Screen {
 
     private Set<Identifier> computeVisible() {
         // Neighbourhood view: nodePos only contains relevant nodes — all visible
-        if (currentTab == Tab.DROPS && !showFullCluster) return nodePos.keySet();
-        // Full cluster or chests: dim non-matching nodes when searching
+        if (currentTab == Tab.DROPS) return nodePos.keySet();
+        // Chests: dim non-matching nodes when searching
         if (searchText.isEmpty()) return nodePos.keySet();
         if (searchText.equals(visibleCacheKey) && visibleCache != null) return visibleCache;
         String q = searchText.toLowerCase();
@@ -809,21 +792,6 @@ public class DiscoveryScreen extends Screen {
             int cw = font.width(counter);
             g.text(font, Component.literal(counter),
                 searchX + SEARCH_W - cw - 4, SEARCH_Y + (SEARCH_H - 7) / 2, 0xFF8888bb);
-        }
-        // Full-cluster toggle button (Drops tab only)
-        if (currentTab == Tab.DROPS && !drops.isEmpty()) {
-            int tx = searchX + SEARCH_W + 4;
-            int tbg = showFullCluster ? C_TAB_ON : C_TAB_OFF;
-            int tbd = showFullCluster ? C_BORDER_H : C_BORDER;
-            g.fill(tx, SEARCH_Y, tx + TOGGLE_W, SEARCH_Y + SEARCH_H, tbg);
-            g.fill(tx,              SEARCH_Y,              tx + TOGGLE_W, SEARCH_Y + 1,             tbd);
-            g.fill(tx,              SEARCH_Y + SEARCH_H - 1, tx + TOGGLE_W, SEARCH_Y + SEARCH_H,   tbd);
-            g.fill(tx,              SEARCH_Y,              tx + 1,        SEARCH_Y + SEARCH_H,      tbd);
-            g.fill(tx + TOGGLE_W - 1, SEARCH_Y,           tx + TOGGLE_W, SEARCH_Y + SEARCH_H,      tbd);
-            String label = showFullCluster ? "Nearby" : "All";
-            int lw = font.width(label);
-            g.text(font, Component.literal(label), tx + (TOGGLE_W - lw) / 2, SEARCH_Y + (SEARCH_H - 7) / 2,
-                showFullCluster ? 0xFFFFFFFF : 0xFFAAAAAA);
         }
     }
 
@@ -990,16 +958,6 @@ public class DiscoveryScreen extends Screen {
             searchFocused = inSearch;
             if (inSearch) return true;
 
-            // Full-cluster toggle button
-            if (currentTab == Tab.DROPS && !drops.isEmpty()) {
-                int tx = searchX + SEARCH_W + 4;
-                if (mx >= tx && mx < tx + TOGGLE_W && my >= SEARCH_Y && my < SEARCH_Y + SEARCH_H) {
-                    showFullCluster = !showFullCluster;
-                    panX = panY = 0;
-                    rebuildLayout();
-                    return true;
-                }
-            }
         }
         return super.mouseClicked(event, wasDragging);
     }
