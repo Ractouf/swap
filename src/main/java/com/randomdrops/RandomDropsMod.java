@@ -154,15 +154,26 @@ public class RandomDropsMod implements ModInitializer {
     /** Called when a player acquires an item — checks bingo cells and pushes update on change. */
     public static void onItemAcquiredForBingo(MinecraftServer server, ServerPlayer player, Item item) {
         if (!server.getGameRules().get(BINGO_ENABLED)) return;
+        boolean shared = server.getGameRules().get(SHARED_DISCOVERY);
+        String bingoKey = shared ? "shared" : player.getUUID().toString();
+
         BingoState state = BingoState.get(server);
         long seed = server.overworld().getSeed();
         Identifier[] grid = BingoState.generateGrid(seed);
-        boolean changed = state.onItemAcquired(player, grid, item);
+        boolean changed = state.onItemAcquired(bingoKey, grid, item);
         if (!changed) return;
-        ServerPlayNetworking.send(player, buildBingoPayload(server, player, false));
-        // Announce win to all players
-        Set<Integer> collected = state.getCollected(player.getUUID().toString());
-        if (BingoState.checkWin(collected)) {
+
+        Set<Integer> collected = state.getCollected(bingoKey);
+        boolean isWin = BingoState.checkWin(collected);
+
+        if (shared) {
+            for (ServerPlayer p : server.getPlayerList().getPlayers())
+                ServerPlayNetworking.send(p, buildBingoPayload(server, p, false));
+        } else {
+            ServerPlayNetworking.send(player, buildBingoPayload(server, player, false));
+        }
+
+        if (isWin) {
             var msg = net.minecraft.network.chat.Component.literal(
                 player.getName().getString() + " got BINGO!");
             for (ServerPlayer p : server.getPlayerList().getPlayers())
@@ -173,7 +184,9 @@ public class RandomDropsMod implements ModInitializer {
     public static BingoDataPayload buildBingoPayload(MinecraftServer server, ServerPlayer player, boolean openScreen) {
         long seed = server.overworld().getSeed();
         Identifier[] grid = BingoState.generateGrid(seed);
-        Set<Integer> collectedSet = BingoState.get(server).getCollected(player.getUUID().toString());
+        boolean shared = server.getGameRules().get(SHARED_DISCOVERY);
+        String bingoKey = shared ? "shared" : player.getUUID().toString();
+        Set<Integer> collectedSet = BingoState.get(server).getCollected(bingoKey);
         List<String> gridStrings = new ArrayList<>(25);
         List<Boolean> collectedBools = new ArrayList<>(25);
         for (int i = 0; i < 25; i++) {

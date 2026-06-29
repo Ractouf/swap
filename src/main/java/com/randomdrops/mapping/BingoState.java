@@ -88,17 +88,17 @@ public class BingoState extends SavedData {
     }
 
     /**
-     * Called when a player acquires an item. Marks all matching uncollected cells.
+     * Called when a player acquires an item. Marks all matching uncollected cells under {@code key}.
+     * Use the player's UUID for per-player mode or {@code "shared"} for shared mode.
      * Returns true if any new cell was collected.
      */
-    public boolean onItemAcquired(ServerPlayer player, Identifier[] grid, Item item) {
+    public boolean onItemAcquired(String key, Identifier[] grid, Item item) {
         Identifier itemId = BuiltInRegistries.ITEM.getKey(item);
         if (itemId == null) return false;
-        String uuid = player.getUUID().toString();
-        Set<Integer> playerCollected = collected.computeIfAbsent(uuid, k -> new HashSet<>());
+        Set<Integer> cellsCollected = collected.computeIfAbsent(key, k -> new HashSet<>());
         boolean changed = false;
         for (int i = 0; i < grid.length; i++) {
-            if (itemId.equals(grid[i]) && playerCollected.add(i)) {
+            if (itemId.equals(grid[i]) && cellsCollected.add(i)) {
                 changed = true;
             }
         }
