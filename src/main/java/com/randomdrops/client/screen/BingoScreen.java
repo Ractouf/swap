@@ -1,8 +1,11 @@
 package com.randomdrops.client.screen;
 
 import com.randomdrops.client.BingoClientCache;
+import com.randomdrops.client.BingoHudConfig;
+import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.gui.screens.Screen;
+import net.minecraft.client.input.MouseButtonEvent;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.Identifier;
@@ -22,6 +25,8 @@ public class BingoScreen extends Screen {
     private static final int GAP     = 4;
     private static final int GRID_W  = 5 * CELL + 4 * GAP;
     private static final int GRID_H  = GRID_W;
+    private static final int BTN_W   = 90;
+    private static final int BTN_H   = 14;
 
     // Colours
     private static final int C_BG         = 0xFF0d0d1a;
@@ -72,10 +77,10 @@ public class BingoScreen extends Screen {
                 if (hovered) { bg = brighten(bg); bd = 0xFFFFFFFF; }
 
                 g.fill(x, y, x + CELL, y + CELL, bg);
-                g.fill(x,          y,          x + CELL,     y + 1,          bd);
+                g.fill(x,          y,            x + CELL,   y + 1,          bd);
                 g.fill(x,          y + CELL - 1, x + CELL,   y + CELL,       bd);
-                g.fill(x,          y,          x + 1,         y + CELL,       bd);
-                g.fill(x + CELL - 1, y,        x + CELL,     y + CELL,       bd);
+                g.fill(x,          y,            x + 1,       y + CELL,       bd);
+                g.fill(x + CELL-1, y,            x + CELL,   y + CELL,       bd);
 
                 String cellId = BingoClientCache.getCell(idx);
                 Identifier id = Identifier.tryParse(cellId);
@@ -105,14 +110,69 @@ public class BingoScreen extends Screen {
         if (BingoClientCache.hasWon()) {
             g.centeredText(font, Component.literal("BINGO!"), width / 2, gridY + GRID_H + 12, C_BINGO_TEXT);
         }
+
+        // Pin HUD / Edit Layout buttons
+        boolean pinned = BingoHudConfig.isVisible();
+        int btnY   = gridY + GRID_H + (BingoClientCache.hasWon() ? 26 : 12);
+        int totalW = 2 * BTN_W + 8;
+        int pinX   = (width - totalW) / 2;
+        int editX  = pinX + BTN_W + 8;
+
+        boolean hovPin  = mx >= pinX  && mx < pinX  + BTN_W && my >= btnY && my < btnY + BTN_H;
+        boolean hovEdit = mx >= editX && mx < editX + BTN_W && my >= btnY && my < btnY + BTN_H;
+
+        int pinBg  = hovPin ? 0xFF2a2a50 : 0xFF1a1a35;
+        int pinBd  = pinned ? 0xFF40a040 : 0xFF404080;
+        int pinCol = pinned ? 0xFF80FF80 : 0xFFCCCCFF;
+        String pinLabel = pinned ? "HUD: ON" : "HUD: OFF";
+        g.fill(pinX, btnY, pinX + BTN_W, btnY + BTN_H, pinBg);
+        g.fill(pinX,          btnY,           pinX + BTN_W, btnY + 1,        pinBd);
+        g.fill(pinX,          btnY + BTN_H-1, pinX + BTN_W, btnY + BTN_H,    pinBd);
+        g.fill(pinX,          btnY,           pinX + 1,      btnY + BTN_H,    pinBd);
+        g.fill(pinX + BTN_W-1, btnY,          pinX + BTN_W, btnY + BTN_H,    pinBd);
+        g.centeredText(font, Component.literal(pinLabel), pinX + BTN_W / 2, btnY + (BTN_H - 8) / 2, pinCol);
+
+        int editBg  = !pinned ? 0xFF141424 : (hovEdit ? 0xFF2a2a50 : 0xFF1a1a35);
+        int editBd  = !pinned ? 0xFF282840 : 0xFF404080;
+        int editCol = !pinned ? 0xFF555566 : 0xFFCCCCFF;
+        g.fill(editX, btnY, editX + BTN_W, btnY + BTN_H, editBg);
+        g.fill(editX,           btnY,           editX + BTN_W, btnY + 1,        editBd);
+        g.fill(editX,           btnY + BTN_H-1, editX + BTN_W, btnY + BTN_H,    editBd);
+        g.fill(editX,           btnY,           editX + 1,      btnY + BTN_H,    editBd);
+        g.fill(editX + BTN_W-1, btnY,           editX + BTN_W, btnY + BTN_H,    editBd);
+        g.centeredText(font, Component.literal("Edit Layout"), editX + BTN_W / 2, btnY + (BTN_H - 8) / 2, editCol);
+    }
+
+    @Override
+    public boolean mouseClicked(MouseButtonEvent event, boolean wasDragging) {
+        if (event.button() == 0) {
+            int mx = (int) event.x(), my = (int) event.y();
+            int gridX = (width  - GRID_W) / 2;
+            int gridY = (height - GRID_H) / 2;
+            boolean pinned = BingoHudConfig.isVisible();
+            int btnY   = gridY + GRID_H + (BingoClientCache.hasWon() ? 26 : 12);
+            int totalW = 2 * BTN_W + 8;
+            int pinX   = (width - totalW) / 2;
+            int editX  = pinX + BTN_W + 8;
+
+            if (mx >= pinX && mx < pinX + BTN_W && my >= btnY && my < btnY + BTN_H) {
+                BingoHudConfig.setVisible(!pinned);
+                return true;
+            }
+            if (pinned && mx >= editX && mx < editX + BTN_W && my >= btnY && my < btnY + BTN_H) {
+                Minecraft.getInstance().setScreenAndShow(new BingoHudEditScreen());
+                return true;
+            }
+        }
+        return super.mouseClicked(event, wasDragging);
     }
 
     private static boolean isOnWinLine(int idx, Set<Integer> lines) {
         int r = idx / 5, c = idx % 5;
         if (lines.contains(r))     return true;
         if (lines.contains(5 + c)) return true;
-        if (lines.contains(10) && r == c)       return true;
-        if (lines.contains(11) && r + c == 4)   return true;
+        if (lines.contains(10) && r == c)     return true;
+        if (lines.contains(11) && r + c == 4) return true;
         return false;
     }
 

@@ -11,7 +11,9 @@ import net.fabricmc.api.ClientModInitializer;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
 import net.fabricmc.fabric.api.client.keymapping.v1.KeyMappingHelper;
 import net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking;
+import net.fabricmc.fabric.api.client.rendering.v1.hud.HudElementRegistry;
 import net.minecraft.client.KeyMapping;
+import net.minecraft.resources.Identifier;
 import org.lwjgl.glfw.GLFW;
 
 public class RandomDropsClient implements ClientModInitializer {
@@ -34,6 +36,12 @@ public class RandomDropsClient implements ClientModInitializer {
             GLFW.GLFW_KEY_B,
             KeyMapping.Category.MISC
         ));
+
+        BingoHudConfig.load();
+        HudElementRegistry.addLast(
+            Identifier.fromNamespaceAndPath("randomdrops", "bingo_hud"),
+            new BingoHudRenderer()
+        );
 
         ClientTickEvents.END_CLIENT_TICK.register(client -> {
             while (openDiscoveryKey.consumeClick()) {

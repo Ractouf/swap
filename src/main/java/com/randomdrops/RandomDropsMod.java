@@ -166,6 +166,15 @@ public class RandomDropsMod implements ModInitializer {
         Set<Integer> collected = state.getCollected(bingoKey);
         boolean isWin = BingoState.checkWin(collected);
 
+        // Broadcast per-cell completion
+        var cellMsg = net.minecraft.network.chat.Component.empty()
+            .append(player.getName())
+            .append(net.minecraft.network.chat.Component.literal(" collected "))
+            .append(new net.minecraft.world.item.ItemStack(item).getHoverName())
+            .append(net.minecraft.network.chat.Component.literal(" for Bingo! (" + collected.size() + "/25)"));
+        for (ServerPlayer p : server.getPlayerList().getPlayers())
+            p.sendSystemMessage(cellMsg);
+
         if (shared) {
             for (ServerPlayer p : server.getPlayerList().getPlayers())
                 ServerPlayNetworking.send(p, buildBingoPayload(server, p, false));
