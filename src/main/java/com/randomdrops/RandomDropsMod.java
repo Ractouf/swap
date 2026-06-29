@@ -30,6 +30,8 @@ import java.util.List;
 import java.util.Set;
 import java.util.UUID;
 
+import net.minecraft.server.level.ServerPlayer;
+
 public class RandomDropsMod implements ModInitializer {
 
     public static final String MOD_ID = "randomdrops";
@@ -68,11 +70,29 @@ public class RandomDropsMod implements ModInitializer {
                 if (cartographer != null && context.player().getAdvancements().getOrStartProgress(cartographer).isDone())
                     entries.add("flag|missing_tab_unlocked");
 
-                ServerPlayNetworking.send(context.player(), new DiscoveryDataPayload(entries));
+                ServerPlayNetworking.send(context.player(), new DiscoveryDataPayload(entries, true));
             });
         });
 
         LOGGER.info("RandomDrops initialised ({} items in pool).", DropMappingGenerator.getItemPool().size());
+    }
+
+    /** Pushes a silent cache-only discovery update to a specific player. */
+    public static void sendDiscoveryUpdate(net.minecraft.server.MinecraftServer server, ServerPlayer player) {
+        boolean shared = server.getGameRules().get(SHARED_DISCOVERY);
+        UUID playerId = shared ? null : player.getUUID();
+
+        List<String> entries = new ArrayList<>();
+        entries.addAll(DropMappingState.get(server).getCategorizedEntries(playerId));
+        ChestSwapState.get(server).getDiscoveredSwaps(playerId)
+            .forEach((src, tgt) -> entries.add("chest|" + src + "|" + tgt));
+        entries.addAll(buildAllSources());
+
+        AdvancementHolder cartographer = server.getAdvancements().get(id("cartographer"));
+        if (cartographer != null && player.getAdvancements().getOrStartProgress(cartographer).isDone())
+            entries.add("flag|missing_tab_unlocked");
+
+        ServerPlayNetworking.send(player, new DiscoveryDataPayload(entries, false));
     }
 
     public static Identifier id(String path) {

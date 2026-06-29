@@ -1,5 +1,6 @@
 package com.randomdrops.mixin;
 
+import com.randomdrops.RandomDropsMod;
 import com.randomdrops.mapping.DropMappingState;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerPlayer;
@@ -25,6 +26,9 @@ public class ItemPickupMixin {
 
         ItemStack stack = self.getItem();
         ServerPlayer sp = player instanceof ServerPlayer spl ? spl : null;
-        DropMappingState.tryRecordAndStrip(stack, server, sp);
+        boolean isNew = DropMappingState.tryRecordAndStrip(stack, server, sp);
+        if (isNew && sp != null) {
+            RandomDropsMod.sendDiscoveryUpdate(server, sp);
+        }
     }
 }

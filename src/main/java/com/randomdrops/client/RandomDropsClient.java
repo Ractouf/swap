@@ -35,7 +35,9 @@ public class RandomDropsClient implements ClientModInitializer {
         ClientPlayNetworking.registerGlobalReceiver(DiscoveryDataPayload.TYPE, (payload, context) ->
             context.client().execute(() -> {
                 DiscoveryClientCache.update(payload.entries());
-                context.client().setScreenAndShow(new DiscoveryScreen(payload.entries()));
+                if (payload.openScreen()) {
+                    context.client().setScreenAndShow(new DiscoveryScreen(payload.entries()));
+                }
             })
         );
     }
