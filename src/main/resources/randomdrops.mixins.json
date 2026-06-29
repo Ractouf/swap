@@ -8,6 +8,9 @@
 		"RandomizableContainerMixin",
 		"VehicleEntityMixin"
 	],
+	"client": [
+		"client.ItemTooltipMixin"
+	],
 	"injectors": {
 		"defaultRequire": 0
 	}
