@@ -14,6 +14,8 @@ import net.fabricmc.fabric.api.networking.v1.ServerPlayNetworking;
 import net.minecraft.advancements.AdvancementHolder;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.resources.Identifier;
+import net.minecraft.server.MinecraftServer;
+import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.EntityTypes;
 import net.minecraft.world.item.Item;
@@ -29,8 +31,6 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
 import java.util.UUID;
-
-import net.minecraft.server.level.ServerPlayer;
 
 public class RandomDropsMod implements ModInitializer {
 
@@ -52,33 +52,36 @@ public class RandomDropsMod implements ModInitializer {
         PayloadTypeRegistry.serverboundPlay().register(RequestDiscoveryPayload.TYPE, RequestDiscoveryPayload.CODEC);
         PayloadTypeRegistry.clientboundPlay().register(DiscoveryDataPayload.TYPE, DiscoveryDataPayload.CODEC);
 
-        ServerPlayNetworking.registerGlobalReceiver(RequestDiscoveryPayload.TYPE, (payload, context) -> {
-            context.server().execute(() -> {
-                boolean shared = context.server().getGameRules().get(SHARED_DISCOVERY);
-                UUID playerId = shared ? null : context.player().getUUID();
-
-                List<String> entries = new ArrayList<>();
-
-                entries.addAll(DropMappingState.get(context.server()).getCategorizedEntries(playerId));
-
-                ChestSwapState.get(context.server()).getDiscoveredSwaps(playerId)
-                    .forEach((src, tgt) -> entries.add("chest|" + src + "|" + tgt));
-
-                entries.addAll(buildAllSources());
-
-                AdvancementHolder cartographer = context.server().getAdvancements().get(id("cartographer"));
-                if (cartographer != null && context.player().getAdvancements().getOrStartProgress(cartographer).isDone())
-                    entries.add("flag|missing_tab_unlocked");
-
-                ServerPlayNetworking.send(context.player(), new DiscoveryDataPayload(entries, true));
-            });
-        });
+        ServerPlayNetworking.registerGlobalReceiver(RequestDiscoveryPayload.TYPE, (payload, context) ->
+            context.server().execute(() ->
+                ServerPlayNetworking.send(context.player(),
+                    new DiscoveryDataPayload(buildEntriesForPlayer(context.server(), context.player()), true))
+            )
+        );
 
         LOGGER.info("RandomDrops initialised ({} items in pool).", DropMappingGenerator.getItemPool().size());
     }
 
-    /** Pushes a silent cache-only discovery update to a specific player. */
-    public static void sendDiscoveryUpdate(net.minecraft.server.MinecraftServer server, ServerPlayer player) {
+    /**
+     * Pushes a silent cache-only discovery update.
+     * If SHARED_DISCOVERY is on, broadcasts to all online players.
+     * If off, sends only to the player who triggered the discovery.
+     */
+    public static void sendDiscoveryUpdate(MinecraftServer server, ServerPlayer triggeringPlayer) {
+        boolean shared = server.getGameRules().get(SHARED_DISCOVERY);
+        if (shared) {
+            for (ServerPlayer player : server.getPlayerList().getPlayers()) {
+                ServerPlayNetworking.send(player,
+                    new DiscoveryDataPayload(buildEntriesForPlayer(server, player), false));
+            }
+        } else {
+            ServerPlayNetworking.send(triggeringPlayer,
+                new DiscoveryDataPayload(buildEntriesForPlayer(server, triggeringPlayer), false));
+        }
+    }
+
+    /** Builds the full discovery entry list for a specific player. */
+    private static List<String> buildEntriesForPlayer(MinecraftServer server, ServerPlayer player) {
         boolean shared = server.getGameRules().get(SHARED_DISCOVERY);
         UUID playerId = shared ? null : player.getUUID();
 
@@ -92,7 +95,7 @@ public class RandomDropsMod implements ModInitializer {
         if (cartographer != null && player.getAdvancements().getOrStartProgress(cartographer).isDone())
             entries.add("flag|missing_tab_unlocked");
 
-        ServerPlayNetworking.send(player, new DiscoveryDataPayload(entries, false));
+        return entries;
     }
 
     public static Identifier id(String path) {
