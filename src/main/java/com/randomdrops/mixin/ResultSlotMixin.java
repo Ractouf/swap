@@ -21,6 +21,5 @@ public class ResultSlotMixin {
         if (server == null) return;
         boolean isNew = DropMappingState.tryRecordAndStrip(stack, server, sp);
         if (isNew) RandomDropsMod.sendDiscoveryUpdate(server, sp);
-        RandomDropsMod.onItemAcquiredForBingo(server, sp, stack.getItem());
     }
 }

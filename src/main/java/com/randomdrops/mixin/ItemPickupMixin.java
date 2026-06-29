@@ -30,8 +30,5 @@ public class ItemPickupMixin {
         if (isNew && sp != null) {
             RandomDropsMod.sendDiscoveryUpdate(server, sp);
         }
-        if (sp != null) {
-            RandomDropsMod.onItemAcquiredForBingo(server, sp, stack.getItem());
-        }
     }
 }
