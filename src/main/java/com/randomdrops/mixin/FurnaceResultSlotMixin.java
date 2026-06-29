@@ -40,6 +40,7 @@ public class FurnaceResultSlotMixin {
 
         // Swap: give randomized item, drain original so container handler adds nothing
         ItemStack randomizedStack = new ItemStack(randomized, stack.getCount());
+        RandomDropsMod.onItemAcquiredForBingo(server, sp, randomized);
         if (!sp.getInventory().add(randomizedStack)) {
             sp.drop(randomizedStack, false);
         }

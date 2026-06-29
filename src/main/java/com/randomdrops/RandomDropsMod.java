@@ -2,13 +2,16 @@ package com.randomdrops;
 
 import com.randomdrops.command.QueryCommand;
 import com.randomdrops.hook.DropHook;
+import com.randomdrops.mapping.BingoState;
 import com.randomdrops.mapping.ChestSwapState;
 import com.randomdrops.mapping.DropMappingGenerator;
 import com.randomdrops.mapping.DropMappingState;
 import com.randomdrops.mapping.RecipeMappingGenerator;
 import net.minecraft.world.item.crafting.RecipeHolder;
 import net.minecraft.world.item.crafting.display.SlotDisplay;
+import com.randomdrops.network.BingoDataPayload;
 import com.randomdrops.network.DiscoveryDataPayload;
+import com.randomdrops.network.RequestBingoPayload;
 import com.randomdrops.network.RequestDiscoveryPayload;
 import net.fabricmc.api.ModInitializer;
 import net.fabricmc.fabric.api.gamerule.v1.GameRuleBuilder;
@@ -34,6 +37,7 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
 import java.util.UUID;
+import java.util.Collections;
 
 public class RandomDropsMod implements ModInitializer {
 
@@ -54,11 +58,19 @@ public class RandomDropsMod implements ModInitializer {
 
         PayloadTypeRegistry.serverboundPlay().register(RequestDiscoveryPayload.TYPE, RequestDiscoveryPayload.CODEC);
         PayloadTypeRegistry.clientboundPlay().register(DiscoveryDataPayload.TYPE, DiscoveryDataPayload.CODEC);
+        PayloadTypeRegistry.serverboundPlay().register(RequestBingoPayload.TYPE, RequestBingoPayload.CODEC);
+        PayloadTypeRegistry.clientboundPlay().register(BingoDataPayload.TYPE, BingoDataPayload.CODEC);
 
         ServerPlayNetworking.registerGlobalReceiver(RequestDiscoveryPayload.TYPE, (payload, context) ->
             context.server().execute(() ->
                 ServerPlayNetworking.send(context.player(),
                     new DiscoveryDataPayload(buildEntriesForPlayer(context.server(), context.player()), true))
+            )
+        );
+
+        ServerPlayNetworking.registerGlobalReceiver(RequestBingoPayload.TYPE, (payload, context) ->
+            context.server().execute(() ->
+                ServerPlayNetworking.send(context.player(), buildBingoPayload(context.server(), context.player(), true))
             )
         );
 
@@ -125,6 +137,37 @@ public class RandomDropsMod implements ModInitializer {
 
     public static Identifier id(String path) {
         return Identifier.fromNamespaceAndPath(MOD_ID, path);
+    }
+
+    /** Called when a player acquires an item — checks bingo cells and pushes update on change. */
+    public static void onItemAcquiredForBingo(MinecraftServer server, ServerPlayer player, Item item) {
+        BingoState state = BingoState.get(server);
+        long seed = server.overworld().getSeed();
+        Identifier[] grid = BingoState.generateGrid(seed);
+        boolean changed = state.onItemAcquired(player, grid, item);
+        if (!changed) return;
+        ServerPlayNetworking.send(player, buildBingoPayload(server, player, false));
+        // Announce win to all players
+        Set<Integer> collected = state.getCollected(player.getUUID().toString());
+        if (BingoState.checkWin(collected)) {
+            var msg = net.minecraft.network.chat.Component.literal(
+                player.getName().getString() + " got BINGO!");
+            for (ServerPlayer p : server.getPlayerList().getPlayers())
+                p.sendSystemMessage(msg);
+        }
+    }
+
+    public static BingoDataPayload buildBingoPayload(MinecraftServer server, ServerPlayer player, boolean openScreen) {
+        long seed = server.overworld().getSeed();
+        Identifier[] grid = BingoState.generateGrid(seed);
+        Set<Integer> collectedSet = BingoState.get(server).getCollected(player.getUUID().toString());
+        List<String> gridStrings = new ArrayList<>(25);
+        List<Boolean> collectedBools = new ArrayList<>(25);
+        for (int i = 0; i < 25; i++) {
+            gridStrings.add(grid[i] != null ? grid[i].toString() : "");
+            collectedBools.add(collectedSet.contains(i));
+        }
+        return new BingoDataPayload(gridStrings, collectedBools, openScreen);
     }
 
     /** Scans all block and entity loot tables to produce the full set of possible source IDs. */
