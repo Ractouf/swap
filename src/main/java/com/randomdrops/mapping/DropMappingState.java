@@ -255,9 +255,6 @@ public class DropMappingState extends SavedData {
         return false;
     }
 
-    public boolean markDiscovered(String compositeKey) {
-        return markDiscovered(compositeKey, null);
-    }
 
     /**
      * Returns categorised entries for the network packet.
