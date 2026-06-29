@@ -28,7 +28,7 @@ public final class BingoClientCache {
         won = BingoState.checkWin(idx);
     }
 
-    public static String  getCell(int i)      { return i >= 0 && i < 25 ? grid[i] : ""; }
+    public static String  getCell(int i)      { String s = (i >= 0 && i < 25) ? grid[i] : null; return s != null ? s : ""; }
     public static boolean isCollected(int i)  { return i >= 0 && i < 25 && collected[i]; }
     public static boolean hasWon()            { return won; }
 

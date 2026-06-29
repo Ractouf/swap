@@ -58,6 +58,7 @@ public final class BingoHudRenderer implements HudElement {
                 g.fill(x + cs - 1, y,          x + cs,     y + cs,     bd);
 
                 String cellId = BingoClientCache.getCell(idx);
+                if (cellId.isEmpty()) continue;
                 Identifier id = Identifier.tryParse(cellId);
                 Item item = id != null ? BuiltInRegistries.ITEM.getValue(id) : null;
                 if (item != null && item != Items.AIR && cs >= 18) {
