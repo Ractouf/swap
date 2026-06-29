@@ -119,7 +119,6 @@ public class DiscoveryScreen extends Screen {
     private int              searchX;
     private List<Identifier> searchMatches = new ArrayList<>();
     private int              matchIndex    = 0;
-    private boolean          initialPanDone = false;
     private Set<Identifier>  visibleCache   = null;
     private String           visibleCacheKey = null;
 
@@ -173,25 +172,6 @@ public class DiscoveryScreen extends Screen {
     protected void init() {
         searchX = width / 2 - SEARCH_W / 2;
         rebuildLayout();
-        if (!initialPanDone && !nodePos.isEmpty()) {
-            initialPanDone = true;
-            boolean pannedToItem = false;
-            Minecraft mc = Minecraft.getInstance();
-            if (mc.player != null) {
-                ItemStack held = mc.player.getMainHandItem();
-                if (!held.isEmpty()) {
-                    Identifier heldId = BuiltInRegistries.ITEM.getKey(held.getItem());
-                    if (heldId != null && nodePos.containsKey(heldId)) {
-                        panToNode(heldId);
-                        pannedToItem = true;
-                    }
-                }
-            }
-            if (!pannedToItem) {
-                panX = 0;
-                panY = NODE_SIZE / 2f;
-            }
-        }
     }
 
     // ── layout ────────────────────────────────────────────────────────────
@@ -199,8 +179,12 @@ public class DiscoveryScreen extends Screen {
     private void rebuildLayout() {
         nodePos.clear();
         visibleCache = null; visibleCacheKey = null;
-        if (currentTab == Tab.DROPS) rebuildDropLayout();
-        else if (currentTab == Tab.CHESTS) rebuildChestLayout();
+        if (currentTab == Tab.DROPS) {
+            rebuildDropLayout();
+            if (!searchText.isEmpty()) buildNeighbourhoodLayout();
+        } else if (currentTab == Tab.CHESTS) {
+            rebuildChestLayout();
+        }
         // MISSING tab has no node-graph layout
     }
 
@@ -209,8 +193,13 @@ public class DiscoveryScreen extends Screen {
         matchIndex = 0;
         missingScrollY = 0;
         searchCountDrops = searchCountChests = searchCountMissing = 0;
+        if (currentTab == Tab.DROPS) {
+            nodePos.clear();
+            visibleCache = null; visibleCacheKey = null;
+        }
         if (searchText.isEmpty()) return;
         String q = searchText.toLowerCase();
+        if (currentTab == Tab.DROPS) buildNeighbourhoodLayout();
         for (Identifier id : nodePos.keySet())
             if (id.toString().toLowerCase().contains(q)) searchMatches.add(id);
         if (!searchMatches.isEmpty()) panToNode(searchMatches.get(0));
@@ -239,23 +228,51 @@ public class DiscoveryScreen extends Screen {
             activeEdges = drops; activeIncoming = Collections.emptyMap(); return;
         }
         activeEdges = drops;
-
-        Set<Identifier> all = new LinkedHashSet<>();
-        drops.keySet().forEach(all::add);
-        drops.values().forEach(all::addAll);
-
         Map<Identifier, Set<Identifier>> inc = new LinkedHashMap<>();
         for (var e : drops.entrySet())
             for (Identifier dst : e.getValue())
                 inc.computeIfAbsent(dst, k -> new LinkedHashSet<>()).add(e.getKey());
         activeIncoming = inc;
+        // nodePos populated by buildNeighbourhoodLayout() on search
+    }
 
-        List<Set<Identifier>> components = connectedComponents(all, drops);
-        components.sort((a, b) -> b.size() - a.size());
+    private void buildNeighbourhoodLayout() {
+        if (searchText.isEmpty() || drops.isEmpty()) return;
+        String q = searchText.toLowerCase();
 
+        Set<Identifier> allNodes = new LinkedHashSet<>();
+        drops.keySet().forEach(allNodes::add);
+        drops.values().forEach(allNodes::addAll);
+
+        Set<Identifier> matchSet = new LinkedHashSet<>();
+        for (Identifier id : allNodes)
+            if (id.toString().toLowerCase().contains(q)) matchSet.add(id);
+        if (matchSet.isEmpty()) return;
+
+        // 1-hop neighbourhood: matches + their direct parents and children
+        Set<Identifier> neighbourhood = new LinkedHashSet<>(matchSet);
+        for (Identifier id : matchSet) {
+            Set<Identifier> outs = activeEdges.get(id);
+            if (outs != null) neighbourhood.addAll(outs);
+            Set<Identifier> ins = activeIncoming.get(id);
+            if (ins != null) neighbourhood.addAll(ins);
+        }
+
+        // Subgraph edges (only within neighbourhood)
+        Map<Identifier, Set<Identifier>> subEdges = new LinkedHashMap<>();
+        for (var e : activeEdges.entrySet()) {
+            if (!neighbourhood.contains(e.getKey())) continue;
+            Set<Identifier> targets = new LinkedHashSet<>();
+            for (Identifier t : e.getValue())
+                if (neighbourhood.contains(t)) targets.add(t);
+            if (!targets.isEmpty()) subEdges.put(e.getKey(), targets);
+        }
+
+        List<Set<Identifier>> comps = connectedComponents(neighbourhood, subEdges);
+        comps.sort((a, b) -> b.size() - a.size());
         int yOffset = 0;
-        for (Set<Identifier> comp : components) {
-            int h = layoutComponent(comp, drops, yOffset);
+        for (Set<Identifier> comp : comps) {
+            int h = layoutComponent(comp, subEdges, yOffset);
             yOffset += h + COMP_GAP;
         }
     }
@@ -481,9 +498,15 @@ public class DiscoveryScreen extends Screen {
         if (hovNode != null) drawTooltip(g, mx, my);
 
         if (nodePos.isEmpty()) {
-            g.centeredText(font,
-                Component.literal("No discoveries yet, pick up randomised drops to see them here"),
-                width / 2, height / 2, 0xFF777799);
+            if (currentTab == Tab.DROPS && !drops.isEmpty()) {
+                g.centeredText(font,
+                    Component.literal("Search for an item to explore your discoveries"),
+                    width / 2, height / 2, 0xFF555577);
+            } else {
+                g.centeredText(font,
+                    Component.literal("No discoveries yet — pick up randomised drops to see them here"),
+                    width / 2, height / 2, 0xFF777799);
+            }
         }
     }
 
@@ -699,6 +722,9 @@ public class DiscoveryScreen extends Screen {
     }
 
     private Set<Identifier> computeVisible() {
+        // DROPS tab: nodePos already contains only the relevant neighbourhood — all visible
+        if (currentTab != Tab.CHESTS) return nodePos.keySet();
+        // CHESTS tab: dim sources whose target doesn't match the search
         if (searchText.isEmpty()) return nodePos.keySet();
         if (searchText.equals(visibleCacheKey) && visibleCache != null) return visibleCache;
         String q = searchText.toLowerCase();
