@@ -3,6 +3,7 @@ package com.randomdrops.mapping;
 import com.mojang.serialization.Codec;
 import com.randomdrops.RandomDropsMod;
 import com.randomdrops.advancement.AdvancementHelper;
+import com.randomdrops.mapping.RecipeMappingGenerator;
 import net.minecraft.core.component.DataComponents;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.nbt.CompoundTag;
@@ -124,13 +125,14 @@ public class DropMappingState extends SavedData {
 
         DropMappingState state = DropMappingState.get(server);
 
-        // Check if this is a "normal" drop (seed happened to map item to itself)
+        // Check if this is an identity mapping (randomised output == original)
         Identifier droppedId = Identifier.tryParse(parts[2]);
         if (droppedId != null) {
-            Item replacement = DropMappingGenerator.getItem(state.worldSeed, droppedId);
+            Item replacement = resolveReplacement(parts[0], state.worldSeed, droppedId);
             Identifier replacementId = BuiltInRegistries.ITEM.getKey(replacement);
             if (droppedId.equals(replacementId)) {
-                if (player != null) AdvancementHelper.award(player, "normal_loot", "got_normal");
+                if (player != null && "block".equals(parts[0]))
+                    AdvancementHelper.award(player, "normal_loot", "got_normal");
                 stripTag(stack);
                 return false;
             }
@@ -242,6 +244,14 @@ public class DropMappingState extends SavedData {
         ).contains(path);
     }
 
+    /** Routes to the correct generator based on discovery type. */
+    private static Item resolveReplacement(String type, long worldSeed, Identifier id) {
+        return switch (type) {
+            case "craft", "smelt", "brew" -> RecipeMappingGenerator.getItem(worldSeed, id);
+            default -> DropMappingGenerator.getItem(worldSeed, id);
+        };
+    }
+
     /** Records a discovery. playerKey null = global pool; non-null = per-player pool. */
     public boolean markDiscovered(String compositeKey, String playerKey) {
         if (playerKey != null) {
@@ -273,7 +283,7 @@ public class DropMappingState extends SavedData {
             Identifier droppedId = Identifier.tryParse(parts[2]);
             if (droppedId == null) continue;
 
-            Item replacement = DropMappingGenerator.getItem(worldSeed, droppedId);
+            Item replacement = resolveReplacement(parts[0], worldSeed, droppedId);
             Identifier replacementId = BuiltInRegistries.ITEM.getKey(replacement);
             if (replacementId == null || replacementId.equals(droppedId)) continue;
 

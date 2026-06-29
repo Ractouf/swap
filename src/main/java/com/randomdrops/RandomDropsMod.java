@@ -5,6 +5,9 @@ import com.randomdrops.hook.DropHook;
 import com.randomdrops.mapping.ChestSwapState;
 import com.randomdrops.mapping.DropMappingGenerator;
 import com.randomdrops.mapping.DropMappingState;
+import com.randomdrops.mapping.RecipeMappingGenerator;
+import net.minecraft.world.item.crafting.RecipeHolder;
+import net.minecraft.world.item.crafting.display.SlotDisplay;
 import com.randomdrops.network.DiscoveryDataPayload;
 import com.randomdrops.network.RequestDiscoveryPayload;
 import net.fabricmc.api.ModInitializer;
@@ -90,12 +93,34 @@ public class RandomDropsMod implements ModInitializer {
         ChestSwapState.get(server).getDiscoveredSwaps(playerId)
             .forEach((src, tgt) -> entries.add("chest|" + src + "|" + tgt));
         entries.addAll(buildAllSources());
+        entries.addAll(buildAllCraftSources(server));
 
         AdvancementHolder cartographer = server.getAdvancements().get(id("cartographer"));
         if (cartographer != null && player.getAdvancements().getOrStartProgress(cartographer).isDone())
             entries.add("flag|missing_tab_unlocked");
 
         return entries;
+    }
+
+    /** All unique crafting/smelting recipe output IDs, sent as craft_src entries for the tooltip. */
+    private static List<String> buildAllCraftSources(MinecraftServer server) {
+        Set<String> result = new LinkedHashSet<>();
+        for (RecipeHolder<?> holder : server.getRecipeManager().getRecipes()) {
+            for (var display : holder.value().display()) {
+                Item out = resolveSlotDisplayItem(display.result());
+                if (out == null || out == Items.AIR) continue;
+                Identifier id = BuiltInRegistries.ITEM.getKey(out);
+                if (id != null) result.add("craft_src|craft|" + id);
+                break;
+            }
+        }
+        return new ArrayList<>(result);
+    }
+
+    private static Item resolveSlotDisplayItem(SlotDisplay slot) {
+        if (slot instanceof SlotDisplay.ItemSlotDisplay isd) return isd.item().value();
+        if (slot instanceof SlotDisplay.ItemStackSlotDisplay issd) return issd.stack().typeHolder().value();
+        return null;
     }
 
     public static Identifier id(String path) {

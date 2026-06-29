@@ -78,6 +78,7 @@ public class DiscoveryScreen extends Screen {
     // ── tabs ───────────────────────────────────────────────────────────────
     enum Tab {
         DROPS  ("Drops",      Items.GRASS_BLOCK),
+        CRAFTS ("Crafts",     Items.CRAFTING_TABLE),
         CHESTS ("Chest Loot", Items.CHEST),
         MISSING("Missing",    Items.SPYGLASS);
         final String label; final Item icon;
@@ -88,6 +89,7 @@ public class DiscoveryScreen extends Screen {
 
     // ── raw data ───────────────────────────────────────────────────────────
     private final Map<Identifier, Set<Identifier>> drops      = new LinkedHashMap<>();
+    private final Map<Identifier, Set<Identifier>> crafts     = new LinkedHashMap<>();
     private final Map<Identifier, String>          nodeType   = new LinkedHashMap<>();
     private final Map<Identifier, Identifier>      chestSwaps = new LinkedHashMap<>();
     /** All possible source IDs from the server ("block|id" or "mob|id"). */
@@ -110,6 +112,7 @@ public class DiscoveryScreen extends Screen {
     // ── state ─────────────────────────────────────────────────────────────
     private final boolean missingTabUnlocked;
     private int searchCountDrops   = 0;
+    private int searchCountCrafts  = 0;
     private int searchCountChests  = 0;
     private int searchCountMissing = 0;
     private Identifier hovNode     = null;
@@ -144,6 +147,13 @@ public class DiscoveryScreen extends Screen {
                     Identifier src = Identifier.tryParse(p[1]);
                     Identifier dst = Identifier.tryParse(p[2]);
                     if (src != null && dst != null) chestSwaps.put(src, dst);
+                }
+                case "craft", "smelt", "brew" -> {
+                    if (p.length < 3) break;
+                    Identifier src = Identifier.tryParse(p[1]);
+                    Identifier dst = Identifier.tryParse(p[2]);
+                    if (src != null && dst != null)
+                        crafts.computeIfAbsent(src, k -> new LinkedHashSet<>()).add(dst);
                 }
                 case "src" -> {
                     // "src|block|minecraft:oak_button" or "src|mob|minecraft:cow"
@@ -202,6 +212,9 @@ public class DiscoveryScreen extends Screen {
         if (currentTab == Tab.DROPS) {
             rebuildDropLayout();
             buildFullClusterLayout();
+        } else if (currentTab == Tab.CRAFTS) {
+            rebuildCraftsLayout();
+            buildFullClusterLayout();
         } else if (currentTab == Tab.CHESTS) {
             rebuildChestLayout();
         }
@@ -213,7 +226,7 @@ public class DiscoveryScreen extends Screen {
         matchIndex = 0;
         missingScrollY = 0;
         searchCountDrops = searchCountChests = searchCountMissing = 0;
-        if (currentTab == Tab.DROPS) {
+        if (currentTab == Tab.DROPS || currentTab == Tab.CRAFTS) {
             visibleCache = null; visibleCacheKey = null;
         }
         if (searchText.isEmpty()) return;
@@ -223,6 +236,8 @@ public class DiscoveryScreen extends Screen {
         if (!searchMatches.isEmpty()) panToNode(searchMatches.get(0));
         // Cross-tab badge counts
         searchCountDrops  = (int) drops.keySet().stream()
+            .filter(id -> id.toString().toLowerCase().contains(q)).count();
+        searchCountCrafts = (int) crafts.keySet().stream()
             .filter(id -> id.toString().toLowerCase().contains(q)).count();
         searchCountChests = (int) chestSwaps.keySet().stream()
             .filter(id -> id.toString().toLowerCase().contains(q)).count();
@@ -253,26 +268,38 @@ public class DiscoveryScreen extends Screen {
         activeIncoming = inc;
     }
 
+    private void rebuildCraftsLayout() {
+        if (crafts.isEmpty()) {
+            activeEdges = crafts; activeIncoming = Collections.emptyMap(); return;
+        }
+        activeEdges = crafts;
+        Map<Identifier, Set<Identifier>> inc = new LinkedHashMap<>();
+        for (var e : crafts.entrySet())
+            for (Identifier dst : e.getValue())
+                inc.computeIfAbsent(dst, k -> new LinkedHashSet<>()).add(e.getKey());
+        activeIncoming = inc;
+    }
+
     private void buildFullClusterLayout() {
         Set<Identifier> all = new LinkedHashSet<>();
-        drops.keySet().forEach(all::add);
-        drops.values().forEach(all::addAll);
-        List<Set<Identifier>> components = connectedComponents(all, drops);
+        activeEdges.keySet().forEach(all::add);
+        activeEdges.values().forEach(all::addAll);
+        List<Set<Identifier>> components = connectedComponents(all, activeEdges);
         components.sort((a, b) -> b.size() - a.size());
         int yOffset = 0;
         for (Set<Identifier> comp : components) {
-            int h = layoutComponent(comp, drops, yOffset);
+            int h = layoutComponent(comp, activeEdges, yOffset);
             yOffset += h + COMP_GAP;
         }
     }
 
     private void buildNeighbourhoodLayout() {
-        if (searchText.isEmpty() || drops.isEmpty()) return;
+        if (searchText.isEmpty() || activeEdges.isEmpty()) return;
         String q = searchText.toLowerCase();
 
         Set<Identifier> allNodes = new LinkedHashSet<>();
-        drops.keySet().forEach(allNodes::add);
-        drops.values().forEach(allNodes::addAll);
+        activeEdges.keySet().forEach(allNodes::add);
+        activeEdges.values().forEach(allNodes::addAll);
 
         Set<Identifier> matchSet = new LinkedHashSet<>();
         for (Identifier id : allNodes)
@@ -528,9 +555,10 @@ public class DiscoveryScreen extends Screen {
         if (hovNode != null) drawTooltip(g, mx, my);
 
         if (nodePos.isEmpty()) {
-            g.centeredText(font,
-                Component.literal("No discoveries yet — pick up randomised drops to see them here"),
-                width / 2, height / 2, 0xFF777799);
+            String emptyMsg = currentTab == Tab.CRAFTS
+                ? "No craft discoveries yet — craft, smelt, or brew something to see them here"
+                : "No discoveries yet — pick up randomised drops to see them here";
+            g.centeredText(font, Component.literal(emptyMsg), width / 2, height / 2, 0xFF777799);
         }
     }
 
@@ -766,8 +794,11 @@ public class DiscoveryScreen extends Screen {
 
     private List<Tab> visibleTabs() {
         List<Tab> tabs = new ArrayList<>();
-        for (Tab tab : Tab.values())
-            if (tab != Tab.MISSING || missingTabUnlocked) tabs.add(tab);
+        for (Tab tab : Tab.values()) {
+            if (tab == Tab.MISSING && !missingTabUnlocked) continue;
+            if (tab == Tab.CRAFTS && crafts.isEmpty()) continue;
+            tabs.add(tab);
+        }
         return tabs;
     }
 
@@ -788,6 +819,7 @@ public class DiscoveryScreen extends Screen {
             g.fill(tx + TAB_W - 1, TAB_Y,             tx + TAB_W,     TAB_Y + TAB_H,  bd);
             int count = searchText.isEmpty() ? 0 : switch (tab) {
                 case DROPS   -> searchCountDrops;
+                case CRAFTS  -> searchCountCrafts;
                 case CHESTS  -> searchCountChests;
                 case MISSING -> searchCountMissing;
             };
