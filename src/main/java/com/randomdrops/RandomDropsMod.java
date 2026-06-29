@@ -50,6 +50,18 @@ public class RandomDropsMod implements ModInitializer {
             .category(GameRuleCategory.MISC)
             .buildAndRegister(Identifier.fromNamespaceAndPath(MOD_ID, "shared_discovery"));
 
+    /** When true, crafting/smelting/brewing outputs are randomised. Default false. */
+    public static final GameRule<Boolean> RECIPE_RANDOMIZE =
+        GameRuleBuilder.forBoolean(false)
+            .category(GameRuleCategory.MISC)
+            .buildAndRegister(Identifier.fromNamespaceAndPath(MOD_ID, "recipe_randomize"));
+
+    /** When true, the bingo gamemode is active. Default false. */
+    public static final GameRule<Boolean> BINGO_ENABLED =
+        GameRuleBuilder.forBoolean(false)
+            .category(GameRuleCategory.MISC)
+            .buildAndRegister(Identifier.fromNamespaceAndPath(MOD_ID, "bingo_enabled"));
+
     @Override
     public void onInitialize() {
         DropMappingGenerator.init();
@@ -141,6 +153,7 @@ public class RandomDropsMod implements ModInitializer {
 
     /** Called when a player acquires an item — checks bingo cells and pushes update on change. */
     public static void onItemAcquiredForBingo(MinecraftServer server, ServerPlayer player, Item item) {
+        if (!server.getGameRules().get(BINGO_ENABLED)) return;
         BingoState state = BingoState.get(server);
         long seed = server.overworld().getSeed();
         Identifier[] grid = BingoState.generateGrid(seed);

@@ -1,6 +1,7 @@
 package com.randomdrops.mixin;
 
 import com.llamalad7.mixinextras.sugar.Local;
+import com.randomdrops.RandomDropsMod;
 import com.randomdrops.mapping.DropMappingState;
 import com.randomdrops.mapping.RecipeMappingGenerator;
 import net.minecraft.core.registries.BuiltInRegistries;
@@ -27,6 +28,11 @@ public class CraftingMenuMixin {
     private static void randomizeCraftResult(ResultContainer container, int slot, ItemStack result,
             @Local ServerLevel level,
             @Local RecipeHolder<CraftingRecipe> recipe) {
+        var server = level.getServer();
+        if (server == null || !server.getGameRules().get(RandomDropsMod.RECIPE_RANDOMIZE)) {
+            container.setItem(slot, result);
+            return;
+        }
         if (result.isEmpty()) {
             container.setItem(slot, result);
             return;

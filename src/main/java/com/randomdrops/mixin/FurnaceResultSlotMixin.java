@@ -21,6 +21,8 @@ public class FurnaceResultSlotMixin {
     @Inject(method = "onTake", at = @At("HEAD"))
     private void randomizeSmeltOutput(Player player, ItemStack stack, CallbackInfo ci) {
         if (!(player instanceof ServerPlayer sp)) return;
+        var server = sp.level().getServer();
+        if (server == null || !server.getGameRules().get(RandomDropsMod.RECIPE_RANDOMIZE)) return;
         Identifier originalId = BuiltInRegistries.ITEM.getKey(stack.getItem());
         if (originalId == null) return;
 
@@ -29,8 +31,6 @@ public class FurnaceResultSlotMixin {
         if (randomized == stack.getItem()) return;
 
         // Record discovery
-        var server = sp.level().getServer();
-        if (server == null) return;
         String compositeKey = "smelt|" + originalId + "|" + originalId;
         boolean shared = server.getGameRules().get(RandomDropsMod.SHARED_DISCOVERY);
         String playerKey = shared ? null : sp.getUUID().toString();

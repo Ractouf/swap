@@ -26,6 +26,8 @@ public class BrewingStandMixin {
     @Inject(method = "doBrew", at = @At("TAIL"))
     private static void randomizeBrewOutputs(Level level, BlockPos pos, NonNullList<ItemStack> items, CallbackInfo ci) {
         if (!(level instanceof ServerLevel sl)) return;
+        var server = sl.getServer();
+        if (server == null || !server.getGameRules().get(RandomDropsMod.RECIPE_RANDOMIZE)) return;
         long seed = sl.getSeed();
         for (int i = 0; i < 3; i++) {
             ItemStack stack = items.get(i);
