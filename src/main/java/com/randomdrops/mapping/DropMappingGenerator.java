@@ -10,7 +10,8 @@ import java.util.*;
 
 public final class DropMappingGenerator {
 
-    private static final Set<Item> EXCLUDED = Set.of(
+    // Package-private: shared with RecipeMappingGenerator so both pools honor the same exclusions.
+    static final Set<Item> EXCLUDED = Set.of(
         Items.AIR,
         Items.COMMAND_BLOCK,
         Items.REPEATING_COMMAND_BLOCK,

@@ -5,6 +5,7 @@ import com.randomdrops.hook.DropHook;
 import com.randomdrops.mapping.ChestSwapState;
 import com.randomdrops.mapping.DropMappingGenerator;
 import com.randomdrops.mapping.DropMappingState;
+import com.randomdrops.mapping.RecipeMappingGenerator;
 import net.minecraft.world.item.crafting.RecipeHolder;
 import net.minecraft.world.item.crafting.display.SlotDisplay;
 import com.randomdrops.network.DiscoveryDataPayload;
@@ -54,6 +55,7 @@ public class RandomDropsMod implements ModInitializer {
     @Override
     public void onInitialize() {
         DropMappingGenerator.init();
+        RecipeMappingGenerator.init();
         DropHook.register();
         QueryCommand.register();
 
