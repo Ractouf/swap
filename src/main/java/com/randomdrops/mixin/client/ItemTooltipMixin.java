@@ -1,7 +1,7 @@
 package com.randomdrops.mixin.client;
 
 import com.randomdrops.client.DiscoveryClientCache;
-import com.randomdrops.hook.DropHook;
+import com.randomdrops.mapping.DropMappingGenerator;
 import net.fabricmc.api.EnvType;
 import net.fabricmc.api.Environment;
 import net.minecraft.core.registries.BuiltInRegistries;
@@ -57,7 +57,7 @@ public class ItemTooltipMixin {
         if (block != Blocks.AIR) {
             Identifier blockId = BuiltInRegistries.BLOCK.getKey(block);
             if (blockId != null) {
-                String normalized = DropHook.normalizePath(blockId.getPath());
+                String normalized = DropMappingGenerator.normalizePath(blockId.getPath());
                 return Identifier.fromNamespaceAndPath(blockId.getNamespace(), normalized);
             }
         }

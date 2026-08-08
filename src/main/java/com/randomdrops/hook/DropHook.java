@@ -85,43 +85,13 @@ public final class DropHook {
         return false;
     }
 
-    /** Normalises block IDs to their canonical drop-item ID. */
-    public static String normalizePath(String path) {
-        if (path.contains("_wall_hanging_sign")) return path.replace("_wall_hanging_sign", "_hanging_sign");
-        if (path.contains("_wall_sign"))         return path.replace("_wall_sign", "_sign");
-        if (path.contains("_wall_banner"))       return path.replace("_wall_banner", "_banner");
-        if (path.contains("_wall_skull"))        return path.replace("_wall_skull", "_skull");
-        if (path.contains("_wall_head"))         return path.replace("_wall_head", "_head");
-        if (path.equals("kelp_plant"))           return "kelp";
-        if (path.equals("twisting_vines_plant")) return "twisting_vines";
-        if (path.equals("weeping_vines_plant"))  return "weeping_vines";
-        // Crop blocks: block ID differs from the item they drop
-        if (path.equals("carrots"))              return "carrot";
-        if (path.equals("potatoes"))             return "potato";
-        if (path.equals("beetroots"))            return "beetroot";
-        if (path.equals("sweet_berry_bush"))     return "sweet_berries";
-        if (path.equals("cave_vines_plant"))     return "glow_berries";
-        if (path.equals("cocoa"))                return "cocoa_beans";
-        // Other blocks whose main drop differs from their block form
-        if (path.equals("clay"))                                                           return "clay_ball";
-        if (path.equals("glowstone"))                                                      return "glowstone_dust";
-        if (path.equals("sea_lantern"))                                                    return "prismarine_crystals";
-        if (path.equals("amethyst_cluster")     || path.equals("large_amethyst_bud"))     return "amethyst_shard";
-        if (path.equals("melon"))                                                          return "melon_slice";
-        if (path.equals("bamboo_sapling"))                                                 return "bamboo";
-        if (path.equals("chorus_plant"))                                                   return "chorus_fruit";
-        if (path.equals("torchflower_crop"))                                               return "torchflower";
-        if (path.equals("pitcher_crop"))                                                   return "pitcher_plant";
-        return path;
-    }
-
     /** Returns "type|sourceId" for block and mob sources, null for everything else (chests, etc.). */
     private static String resolveSource(LootContext context) {
         if (context.hasParameter(LootContextParams.BLOCK_STATE)) {
             Block block = context.getParameter(LootContextParams.BLOCK_STATE).getBlock();
             Identifier blockId = BuiltInRegistries.BLOCK.getKey(block);
             if (blockId == null) return null;
-            String path = normalizePath(blockId.getPath());
+            String path = DropMappingGenerator.normalizePath(blockId.getPath());
             Identifier normalizedId = path.equals(blockId.getPath())
                 ? blockId : Identifier.fromNamespaceAndPath(blockId.getNamespace(), path);
             return "block|" + normalizedId;

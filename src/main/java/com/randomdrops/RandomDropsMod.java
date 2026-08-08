@@ -142,7 +142,7 @@ public class RandomDropsMod implements ModInitializer {
             if (!lt.get().identifier().getPath().startsWith("blocks/")) continue;
             Identifier blockId = BuiltInRegistries.BLOCK.getKey(block);
             if (blockId == null) continue;
-            String path = DropHook.normalizePath(blockId.getPath());
+            String path = DropMappingGenerator.normalizePath(blockId.getPath());
             Identifier normalizedId = path.equals(blockId.getPath())
                 ? blockId : Identifier.fromNamespaceAndPath(blockId.getNamespace(), path);
             // Crop blocks have asItem()==AIR; check the normalised item ID instead

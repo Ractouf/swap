@@ -15,9 +15,7 @@ import net.minecraft.network.chat.Component;
 import net.minecraft.resources.Identifier;
 import net.minecraft.world.item.Item;
 
-import java.util.ArrayList;
-import java.util.List;
-import java.util.stream.Collectors;
+
 
 
 public final class QueryCommand {
@@ -69,7 +67,7 @@ public final class QueryCommand {
         return 1;
     }
 
-    /** Reverse lookup: finds all pool items whose randomised drop equals the queried item. */
+    /** Reverse lookup: finds the unique source whose randomised drop equals the queried item. */
     private static int executeReverse(CommandContext<CommandSourceStack> ctx) {
         CommandSourceStack source = ctx.getSource();
         Identifier targetId = IdentifierArgument.getId(ctx, "item");
@@ -80,25 +78,16 @@ public final class QueryCommand {
         }
 
         Item target = BuiltInRegistries.ITEM.getValue(targetId);
-        DropMappingState state = DropMappingState.get(source.getServer());
-        long seed = state.getWorldSeed();
+        long seed = DropMappingState.get(source.getServer()).getWorldSeed();
+        Item src = DropMappingGenerator.getSource(seed, target);
 
-        List<Identifier> sources = new ArrayList<>();
-        for (Item item : DropMappingGenerator.getItemPool()) {
-            Identifier id = BuiltInRegistries.ITEM.getKey(item);
-            if (id == null) continue;
-            if (DropMappingGenerator.getItem(seed, id) == target) {
-                sources.add(id);
-            }
-        }
-
-        if (sources.isEmpty()) {
+        if (src == null) {
             source.sendSuccess(() -> Component.literal("Nothing maps to " + targetId), false);
             return 1;
         }
 
-        String list = sources.stream().map(Identifier::toString).collect(Collectors.joining(", "));
-        source.sendSuccess(() -> Component.literal("→ " + targetId + ": " + list), false);
+        Identifier srcId = BuiltInRegistries.ITEM.getKey(src);
+        source.sendSuccess(() -> Component.literal(srcId + " → " + targetId), false);
         return 1;
     }
 }
