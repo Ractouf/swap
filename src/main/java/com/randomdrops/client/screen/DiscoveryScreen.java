@@ -77,10 +77,9 @@ public class DiscoveryScreen extends Screen {
 
     // ── tabs ───────────────────────────────────────────────────────────────
     enum Tab {
-        DROPS  ("Drops",      Items.GRASS_BLOCK),
-        CRAFTS ("Crafts",     Items.CRAFTING_TABLE),
-        CHESTS ("Chest Loot", Items.CHEST),
-        MISSING("Missing",    Items.SPYGLASS);
+        DROPS  ("Drops",   Items.GRASS_BLOCK),
+        CRAFTS ("Crafts",  Items.CRAFTING_TABLE),
+        MISSING("Missing", Items.SPYGLASS);
         final String label; final Item icon;
         Tab(String l, Item i) { label = l; icon = i; }
     }
@@ -91,7 +90,6 @@ public class DiscoveryScreen extends Screen {
     private final Map<Identifier, Set<Identifier>> drops      = new LinkedHashMap<>();
     private final Map<Identifier, Set<Identifier>> crafts     = new LinkedHashMap<>();
     private final Map<Identifier, String>          nodeType   = new LinkedHashMap<>();
-    private final Map<Identifier, Identifier>      chestSwaps = new LinkedHashMap<>();
     /** All possible source IDs from the server ("block|id" or "mob|id"). */
     private final List<String> allSources = new ArrayList<>();
 
@@ -113,7 +111,6 @@ public class DiscoveryScreen extends Screen {
     private final boolean missingTabUnlocked;
     private int searchCountDrops   = 0;
     private int searchCountCrafts  = 0;
-    private int searchCountChests  = 0;
     private int searchCountMissing = 0;
     private Identifier hovNode     = null;
     private float      panX = 0, panY = 0;
@@ -134,19 +131,14 @@ public class DiscoveryScreen extends Screen {
             String[] p = entry.split("\\|", 3);
             if (p.length < 2) continue;
             switch (p[0]) {
-                case "block", "mob" -> {
+                case "block", "mob", "chest" -> {
                     if (p.length < 3) break;
                     Identifier src = Identifier.tryParse(p[1]);
                     Identifier dst = Identifier.tryParse(p[2]);
                     if (src == null || dst == null) break;
                     drops.computeIfAbsent(src, k -> new LinkedHashSet<>()).add(dst);
-                    nodeType.put(src, p[0]);
-                }
-                case "chest" -> {
-                    if (p.length < 3) break;
-                    Identifier src = Identifier.tryParse(p[1]);
-                    Identifier dst = Identifier.tryParse(p[2]);
-                    if (src != null && dst != null) chestSwaps.put(src, dst);
+                    // A node discovered as both "mob" and "chest"/"block" keeps its spawn-egg icon.
+                    nodeType.merge(src, p[0], (existing, incoming) -> "mob".equals(existing) ? existing : incoming);
                 }
                 case "craft", "smelt", "brew" -> {
                     if (p.length < 3) break;
@@ -215,8 +207,6 @@ public class DiscoveryScreen extends Screen {
         } else if (currentTab == Tab.CRAFTS) {
             rebuildCraftsLayout();
             buildFullClusterLayout();
-        } else if (currentTab == Tab.CHESTS) {
-            rebuildChestLayout();
         }
         // MISSING tab has no node-graph layout
     }
@@ -225,7 +215,7 @@ public class DiscoveryScreen extends Screen {
         searchMatches.clear();
         matchIndex = 0;
         missingScrollY = 0;
-        searchCountDrops = searchCountChests = searchCountMissing = 0;
+        searchCountDrops = searchCountMissing = 0;
         if (currentTab == Tab.DROPS || currentTab == Tab.CRAFTS) {
             visibleCache = null; visibleCacheKey = null;
         }
@@ -238,8 +228,6 @@ public class DiscoveryScreen extends Screen {
         searchCountDrops  = (int) drops.keySet().stream()
             .filter(id -> id.toString().toLowerCase().contains(q)).count();
         searchCountCrafts = (int) crafts.keySet().stream()
-            .filter(id -> id.toString().toLowerCase().contains(q)).count();
-        searchCountChests = (int) chestSwaps.keySet().stream()
             .filter(id -> id.toString().toLowerCase().contains(q)).count();
         if (missingTabUnlocked) {
             if (missingGroups == null) buildMissingGroups();
@@ -425,41 +413,6 @@ public class DiscoveryScreen extends Screen {
             result.add(comp);
         }
         return result;
-    }
-
-    private void rebuildChestLayout() {
-        if (chestSwaps.isEmpty()) {
-            activeEdges = Collections.emptyMap(); activeIncoming = Collections.emptyMap(); return;
-        }
-        Map<Identifier, Set<Identifier>> edges = new LinkedHashMap<>();
-        Map<Identifier, Set<Identifier>> inc   = new LinkedHashMap<>();
-        chestSwaps.forEach((src, dst) -> {
-            edges.computeIfAbsent(src, k -> new LinkedHashSet<>()).add(dst);
-            inc.computeIfAbsent(dst, k -> new LinkedHashSet<>()).add(src);
-        });
-        activeEdges = edges; activeIncoming = inc;
-
-        List<Identifier> targets = new ArrayList<>(chestSwaps.values());
-        targets.sort(Comparator.comparing(Identifier::toString));
-        for (int i = 0; i < targets.size(); i++)
-            nodePos.put(targets.get(i), new float[]{COL_GAP / 2f, i * ROW_STEP});
-
-        List<Identifier> sources = new ArrayList<>(chestSwaps.keySet());
-        sources.sort((a, b) -> {
-            float ya = baryChest(edges.get(a)); float yb = baryChest(edges.get(b));
-            return ya != yb ? Float.compare(ya, yb) : a.toString().compareTo(b.toString());
-        });
-        for (int i = 0; i < sources.size(); i++)
-            nodePos.put(sources.get(i), new float[]{-COL_GAP / 2f, i * ROW_STEP});
-    }
-
-    private float baryChest(Set<Identifier> targets) {
-        if (targets == null) return 0;
-        float s = 0; int n = 0;
-        for (Identifier t : targets) {
-            float[] p = nodePos.get(t); if (p != null) { s += p[1]; n++; }
-        }
-        return n > 0 ? s / n : 0;
     }
 
     // ── rendering ─────────────────────────────────────────────────────────
@@ -820,7 +773,6 @@ public class DiscoveryScreen extends Screen {
             int count = searchText.isEmpty() ? 0 : switch (tab) {
                 case DROPS   -> searchCountDrops;
                 case CRAFTS  -> searchCountCrafts;
-                case CHESTS  -> searchCountChests;
                 case MISSING -> searchCountMissing;
             };
             String label = count > 0 ? tab.label + " (" + count + ")" : tab.label;
@@ -854,7 +806,6 @@ public class DiscoveryScreen extends Screen {
     private Item iconFor(Identifier id) {
         Item special = SPECIAL_ICONS.get(id.toString());
         if (special != null) return special;
-        if (currentTab == Tab.CHESTS) return Items.CHEST;
         String type = nodeType.get(id);
         if ("mob".equals(type)) {
             Identifier egg = Identifier.fromNamespaceAndPath(id.getNamespace(), id.getPath() + "_spawn_egg");
@@ -881,25 +832,14 @@ public class DiscoveryScreen extends Screen {
 
     private void drawTooltip(GuiGraphicsExtractor g, int mx, int my) {
         List<Component> lines = new ArrayList<>();
-        if (currentTab == Tab.CHESTS) {
-            lines.add(Component.literal(chestShort(hovNode)).withStyle(s -> s.withBold(true)));
-            lines.add(Component.literal(hovNode.toString()).withStyle(s -> s.withColor(0x888888)));
-            Set<Identifier> outs = activeEdges.get(hovNode);
-            if (outs != null) outs.forEach(t ->
-                lines.add(Component.literal("→ " + chestShort(t)).withStyle(s -> s.withColor(0xaaaaff))));
-            Set<Identifier> ins = activeIncoming.get(hovNode);
-            if (ins != null) ins.forEach(t ->
-                lines.add(Component.literal("← " + chestShort(t)).withStyle(s -> s.withColor(0xffaa66))));
-        } else {
-            lines.add(Component.literal(nodeDisplayName(hovNode)).withStyle(s -> s.withBold(true)));
-            lines.add(Component.literal(hovNode.toString()).withStyle(s -> s.withColor(0x888888)));
-            Set<Identifier> outs = activeEdges.get(hovNode);
-            if (outs != null) outs.forEach(tId ->
-                lines.add(Component.literal("→ " + nodeDisplayName(tId)).withStyle(s -> s.withColor(0xaaaaff))));
-            Set<Identifier> ins = activeIncoming.get(hovNode);
-            if (ins != null) ins.forEach(srcId ->
-                lines.add(Component.literal("← " + nodeDisplayName(srcId)).withStyle(s -> s.withColor(0xffaa66))));
-        }
+        lines.add(Component.literal(nodeDisplayName(hovNode)).withStyle(s -> s.withBold(true)));
+        lines.add(Component.literal(hovNode.toString()).withStyle(s -> s.withColor(0x888888)));
+        Set<Identifier> outs = activeEdges.get(hovNode);
+        if (outs != null) outs.forEach(tId ->
+            lines.add(Component.literal("→ " + nodeDisplayName(tId)).withStyle(s -> s.withColor(0xaaaaff))));
+        Set<Identifier> ins = activeIncoming.get(hovNode);
+        if (ins != null) ins.forEach(srcId ->
+            lines.add(Component.literal("← " + nodeDisplayName(srcId)).withStyle(s -> s.withColor(0xffaa66))));
         float[] hPos = nodePos.get(hovNode);
         int nodeCenterX = width / 2 + (int) panX + (int) hPos[0];
         int tooltipX;
@@ -910,12 +850,6 @@ public class DiscoveryScreen extends Screen {
             tooltipX = mx;
         }
         g.setTooltipForNextFrame(font, lines, Optional.empty(), tooltipX, my);
-    }
-
-    private String chestShort(Identifier id) {
-        String path = id.getPath();
-        int slash = path.lastIndexOf('/');
-        return (slash >= 0 ? path.substring(slash + 1) : path).replace('_', ' ');
     }
 
     // ── draw helpers ──────────────────────────────────────────────────────

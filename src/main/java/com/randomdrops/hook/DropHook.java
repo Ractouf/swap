@@ -8,6 +8,7 @@ import net.minecraft.core.Holder;
 import net.minecraft.core.component.DataComponents;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.resources.Identifier;
+import net.minecraft.resources.ResourceKey;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.entity.Entity;
@@ -24,6 +25,7 @@ import net.minecraft.world.level.storage.loot.parameters.LootContextParams;
 
 import java.util.List;
 import java.util.ListIterator;
+import java.util.Optional;
 
 public final class DropHook {
 
@@ -38,12 +40,16 @@ public final class DropHook {
             LootContext context,
             List<ItemStack> drops
     ) {
-        // Returns "block|minecraft:grass_block" or "mob|minecraft:sheep", or null to skip
+        // Returns "block|minecraft:grass_block" or "mob|minecraft:sheep", or null if neither
         String source = resolveSource(context);
-        if (source == null) return;
+        boolean chestContext = false;
+        if (source == null) {
+            if (!isChestLootTable(lootTable)) return;
+            chestContext = true;
+        }
 
         // Award silk touch advancement the first time a player mines with a silk touch tool
-        if (source.startsWith("block") && context.hasParameter(LootContextParams.TOOL)
+        if (!chestContext && source.startsWith("block") && context.hasParameter(LootContextParams.TOOL)
                 && context.hasParameter(LootContextParams.THIS_ENTITY)) {
             Entity miner = context.getParameter(LootContextParams.THIS_ENTITY);
             if (miner instanceof ServerPlayer sp && hasSilkTouch(context.getParameter(LootContextParams.TOOL))) {
@@ -70,9 +76,17 @@ public final class DropHook {
             ItemStack newStack = (replacement == originalItem)
                 ? original.copy()
                 : new ItemStack(replacement, original.getCount());
-            DropMappingState.tagStack(newStack, source + "|" + droppedItemId);
+            // Chest items have no single "source" the way a block/mob does — key by the item's own id.
+            String stackSource = chestContext ? "chest|" + droppedItemId : source;
+            DropMappingState.tagStack(newStack, stackSource + "|" + droppedItemId);
             iter.set(newStack);
         }
+    }
+
+    /** True if this loot table is a real storage-container table (chests, barrels, etc.), not fishing/gift/other. */
+    private static boolean isChestLootTable(Holder<LootTable> lootTable) {
+        Optional<ResourceKey<LootTable>> key = lootTable.unwrapKey();
+        return key.isPresent() && key.get().identifier().getPath().startsWith("chests/");
     }
 
     private static boolean hasSilkTouch(ItemInstance tool) {

@@ -14,7 +14,7 @@ import java.util.List;
  * Each entry is a pipe-separated string:
  *   "block|minecraft:grass_block|minecraft:gold_ingot"   (block drops)
  *   "mob|minecraft:sheep|minecraft:dirt"                 (mob drops)
- *   "chest|minecraft:chests/simple_dungeon|minecraft:chests/bastion_treasure"  (chest swap)
+ *   "chest|minecraft:dirt|minecraft:white_wool"          (chest item substitution)
  *
  * openScreen=true  → player pressed H, open the discovery screen after updating cache
  * openScreen=false → server push on new discovery, update cache silently

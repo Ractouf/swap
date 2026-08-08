@@ -9,7 +9,6 @@
 		"FurnaceResultSlotMixin",
 		"ItemFrameMixin",
 		"ItemPickupMixin",
-		"RandomizableContainerMixin",
 		"ResultSlotMixin",
 		"VehicleEntityMixin"
 	],

@@ -164,6 +164,9 @@ public class DropMappingState extends SavedData {
 
         AdvancementHelper.award(player, "root", "first_drop");
 
+        if ("chest".equals(type))
+            AdvancementHelper.award(player, "pandoras_chest", "chest_opened");
+
         if ("block".equals(type) && sourceId.contains("shulker_box"))
             AdvancementHelper.award(player, "gone_forever", "shulker_broken");
         if ("block".equals(type) && isLogBlock(sourceId))

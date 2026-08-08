@@ -26,7 +26,7 @@ public final class DiscoveryClientCache {
             String[] p = entry.split("\\|", 3);
             if (p.length < 2) continue;
             switch (p[0]) {
-                case "block", "mob" -> {
+                case "block", "mob", "chest" -> {
                     if (p.length < 3) break;
                     Identifier src = Identifier.tryParse(p[1]);
                     Identifier dst = Identifier.tryParse(p[2]);

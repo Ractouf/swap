@@ -2,7 +2,6 @@ package com.randomdrops;
 
 import com.randomdrops.command.QueryCommand;
 import com.randomdrops.hook.DropHook;
-import com.randomdrops.mapping.ChestSwapState;
 import com.randomdrops.mapping.DropMappingGenerator;
 import com.randomdrops.mapping.DropMappingState;
 import com.randomdrops.mapping.RecipeMappingGenerator;
@@ -102,8 +101,6 @@ public class RandomDropsMod implements ModInitializer {
 
         List<String> entries = new ArrayList<>();
         entries.addAll(DropMappingState.get(server).getCategorizedEntries(playerId));
-        ChestSwapState.get(server).getDiscoveredSwaps(playerId)
-            .forEach((src, tgt) -> entries.add("chest|" + src + "|" + tgt));
         entries.addAll(buildAllSources());
         entries.addAll(buildAllCraftSources(server));
 
