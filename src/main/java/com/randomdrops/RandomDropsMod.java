@@ -11,6 +11,7 @@ import net.minecraft.world.item.crafting.display.SlotDisplay;
 import com.randomdrops.network.DiscoveryDataPayload;
 import com.randomdrops.network.RequestDiscoveryPayload;
 import net.fabricmc.api.ModInitializer;
+import net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents;
 import net.fabricmc.fabric.api.gamerule.v1.GameRuleBuilder;
 import net.fabricmc.fabric.api.networking.v1.PayloadTypeRegistry;
 import net.fabricmc.fabric.api.networking.v1.ServerPlayNetworking;
@@ -69,7 +70,11 @@ public class RandomDropsMod implements ModInitializer {
             )
         );
 
-        LOGGER.info("RandomDrops initialised ({} items in pool).", DropMappingGenerator.getItemPool().size());
+        // Mob-drop discovery requires reading loot table resources, only available once the server starts.
+        ServerLifecycleEvents.SERVER_STARTING.register(server -> {
+            DropMappingGenerator.loadMobDrops(server);
+            LOGGER.info("RandomDrops initialised ({} items in pool).", DropMappingGenerator.getItemPool().size());
+        });
     }
 
     /**

@@ -1,11 +1,25 @@
 package com.randomdrops.mapping;
 
+import com.google.gson.JsonElement;
+import com.google.gson.JsonObject;
+import com.google.gson.JsonParser;
 import net.minecraft.core.registries.BuiltInRegistries;
+import net.minecraft.core.registries.Registries;
+import net.minecraft.resources.FileToIdConverter;
 import net.minecraft.resources.Identifier;
+import net.minecraft.resources.ResourceKey;
+import net.minecraft.server.MinecraftServer;
+import net.minecraft.server.packs.resources.ResourceManager;
+import net.minecraft.tags.TagKey;
+import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.Items;
 import net.minecraft.world.level.block.Block;
+import net.minecraft.world.level.storage.loot.LootTable;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
+import java.io.IOException;
 import java.util.*;
 
 public final class DropMappingGenerator {
@@ -38,26 +52,18 @@ public final class DropMappingGenerator {
         Items.FILLED_MAP
     );
 
-    // Registry IDs of items dropped by mobs that have no block form.
-    // Using string IDs avoids field-name differences across MC versions.
-    private static final String[] MOB_DROP_IDS = {
-        "rotten_flesh", "bone", "arrow", "string", "spider_eye",
-        "gunpowder", "ender_pearl", "blaze_rod", "ghast_tear",
-        "slime_ball", "magma_cream", "shulker_shell", "phantom_membrane",
-        "prismarine_shard", "prismarine_crystals",
-        "leather", "beef", "porkchop", "chicken", "mutton", "rabbit",
-        "rabbit_foot", "rabbit_hide", "feather", "cod", "salmon",
-        "tropical_fish", "pufferfish", "ink_sac", "glow_ink_sac",
-        "copper_ingot", "gold_nugget", "gold_ingot", "iron_ingot",
-        "nether_star", "totem_of_undying", "trident", "nautilus_shell",
-        "wither_skeleton_skull", "emerald"
-    };
+    private static final Logger LOGGER = LoggerFactory.getLogger(DropMappingGenerator.class);
+    private static final FileToIdConverter LOOT_TABLE_FILES = FileToIdConverter.registry(Registries.LOOT_TABLE);
 
     // Pool of items that are actual loot-table drops (blocks + mobs).
     // This is the universe for both sources and targets, guaranteeing every
     // item has exactly one source via the world-seed permutation.
     private static List<Item> SOURCE_POOL = null;
     private static Map<Item, Integer> SOURCE_INDEX = null;
+
+    // Block-derived sources, gathered by init() and held here until loadMobDrops()
+    // merges in the mob-derived sources and freezes SOURCE_POOL/SOURCE_INDEX.
+    private static Set<Item> pendingSources = null;
 
     // Permutation cache — recomputed only when the world seed changes.
     private static long cachedSeed = Long.MIN_VALUE;
@@ -66,7 +72,8 @@ public final class DropMappingGenerator {
 
     private DropMappingGenerator() {}
 
-    /** Call once from ModInitializer after registries are frozen. */
+    /** Call once from ModInitializer after registries are frozen. Gathers block-derived sources only —
+     *  call loadMobDrops(server) once a server is available to complete the pool. */
     public static void init() {
         Set<Item> sources = new LinkedHashSet<>();
 
@@ -84,9 +91,30 @@ public final class DropMappingGenerator {
             }
         }
 
-        // Mob drops that have no block form
-        for (String id : MOB_DROP_IDS) {
-            Item item = BuiltInRegistries.ITEM.getValue(Identifier.fromNamespaceAndPath("minecraft", id));
+        pendingSources = sources;
+    }
+
+    /**
+     * Scans every entity type's actual loot table (recursively, including tag and nested-table
+     * entries) to discover real mob-drop items, then merges them with the block-derived sources
+     * from init() and freezes SOURCE_POOL/SOURCE_INDEX. Call once a server (and its resources) is
+     * available, e.g. from ServerLifecycleEvents.SERVER_STARTING.
+     */
+    public static void loadMobDrops(MinecraftServer server) {
+        if (pendingSources == null) throw new IllegalStateException("DropMappingGenerator.init() not called");
+
+        ResourceManager resources = server.getResourceManager();
+        Set<Identifier> visited = new HashSet<>();
+        Set<Item> mobItems = new LinkedHashSet<>();
+
+        for (EntityType<?> type : BuiltInRegistries.ENTITY_TYPE) {
+            Optional<ResourceKey<LootTable>> lootTable = type.getDefaultLootTable();
+            if (lootTable.isEmpty()) continue;
+            collectLootTableItems(resources, lootTable.get().identifier(), visited, mobItems);
+        }
+
+        Set<Item> sources = pendingSources;
+        for (Item item : mobItems) {
             if (item != null && item != Items.AIR && !EXCLUDED.contains(item)) sources.add(item);
         }
 
@@ -94,6 +122,64 @@ public final class DropMappingGenerator {
         SOURCE_INDEX = new HashMap<>();
         for (int i = 0; i < SOURCE_POOL.size(); i++) {
             SOURCE_INDEX.put(SOURCE_POOL.get(i), i);
+        }
+        pendingSources = null;
+    }
+
+    /** Recursively reads a loot table's JSON and collects every item it can produce (item entries,
+     *  expanded item tags, and nested/referenced loot tables). Best-effort: unreadable or malformed
+     *  tables are logged and skipped rather than failing startup. */
+    private static void collectLootTableItems(ResourceManager resources, Identifier tableId,
+                                               Set<Identifier> visited, Set<Item> out) {
+        if (!visited.add(tableId)) return;
+        Identifier fileId = LOOT_TABLE_FILES.idToFile(tableId);
+        resources.getResource(fileId).ifPresent(resource -> {
+            try (var reader = resource.openAsReader()) {
+                scanLootJson(JsonParser.parseReader(reader), resources, visited, out);
+            } catch (IOException | RuntimeException e) {
+                LOGGER.warn("Failed to read loot table {} while building the drop pool", tableId, e);
+            }
+        });
+    }
+
+    private static void scanLootJson(JsonElement el, ResourceManager resources,
+                                      Set<Identifier> visited, Set<Item> out) {
+        if (el.isJsonArray()) {
+            for (JsonElement child : el.getAsJsonArray()) {
+                scanLootJson(child, resources, visited, out);
+            }
+            return;
+        }
+        if (!el.isJsonObject()) return;
+
+        JsonObject obj = el.getAsJsonObject();
+        String type = obj.has("type") && obj.get("type").isJsonPrimitive() ? obj.get("type").getAsString() : null;
+
+        if ("minecraft:item".equals(type) && obj.has("name")) {
+            Identifier itemId = Identifier.tryParse(obj.get("name").getAsString());
+            Item item = itemId == null ? null : BuiltInRegistries.ITEM.getValue(itemId);
+            if (item != null) out.add(item);
+        } else if ("minecraft:tag".equals(type) && obj.has("name")) {
+            String tagStr = obj.get("name").getAsString();
+            Identifier tagId = Identifier.tryParse(tagStr.startsWith("#") ? tagStr.substring(1) : tagStr);
+            if (tagId != null) {
+                TagKey<Item> tagKey = TagKey.create(Registries.ITEM, tagId);
+                for (var holder : BuiltInRegistries.ITEM.getTagOrEmpty(tagKey)) {
+                    out.add(holder.value());
+                }
+            }
+        } else if ("minecraft:loot_table".equals(type) && obj.has("value")) {
+            JsonElement value = obj.get("value");
+            if (value.isJsonPrimitive()) {
+                Identifier nestedId = Identifier.tryParse(value.getAsString());
+                if (nestedId != null) collectLootTableItems(resources, nestedId, visited, out);
+            } else if (value.isJsonObject()) {
+                scanLootJson(value, resources, visited, out);
+            }
+        }
+
+        for (var entry : obj.entrySet()) {
+            scanLootJson(entry.getValue(), resources, visited, out);
         }
     }
 
