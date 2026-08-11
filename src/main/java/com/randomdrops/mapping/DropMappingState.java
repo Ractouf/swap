@@ -150,6 +150,22 @@ public class DropMappingState extends SavedData {
         return isNew;
     }
 
+    /**
+     * Sweeps a player's inventory for tagged stacks and records/strips them.
+     * Slot#onTake only reliably fires for single-click pickup — shift-click and other
+     * quick-move paths move stacks directly without it, so container-sourced discoveries
+     * (chests, furnace/crafting results) are caught here instead, at most one tick later.
+     */
+    public static void scanInventoryForDiscoveries(MinecraftServer server, ServerPlayer player) {
+        var inventory = player.getInventory();
+        boolean any = false;
+        for (int i = 0; i < inventory.getContainerSize(); i++) {
+            ItemStack stack = inventory.getItem(i);
+            if (!stack.isEmpty() && tryRecordAndStrip(stack, server, player)) any = true;
+        }
+        if (any) RandomDropsMod.sendDiscoveryUpdate(server, player);
+    }
+
     private static void stripTag(ItemStack stack) {
         CustomData.update(DataComponents.CUSTOM_DATA, stack, t -> t.remove(TAG_KEY));
         CustomData remaining = stack.get(DataComponents.CUSTOM_DATA);

@@ -11,6 +11,7 @@ import com.randomdrops.network.DiscoveryDataPayload;
 import com.randomdrops.network.RequestDiscoveryPayload;
 import net.fabricmc.api.ModInitializer;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents;
+import net.fabricmc.fabric.api.event.lifecycle.v1.ServerTickEvents;
 import net.fabricmc.fabric.api.gamerule.v1.GameRuleBuilder;
 import net.fabricmc.fabric.api.networking.v1.PayloadTypeRegistry;
 import net.fabricmc.fabric.api.networking.v1.ServerPlayNetworking;
@@ -73,6 +74,14 @@ public class RandomDropsMod implements ModInitializer {
         ServerLifecycleEvents.SERVER_STARTING.register(server -> {
             DropMappingGenerator.loadMobDrops(server);
             LOGGER.info("RandomDrops initialised ({} items in pool).", DropMappingGenerator.getItemPool().size());
+        });
+
+        // Catches container-sourced discoveries (chests, furnace/crafting results) that
+        // Slot#onTake misses on shift-click and other quick-move pickup paths.
+        ServerTickEvents.END_SERVER_TICK.register(server -> {
+            for (ServerPlayer player : server.getPlayerList().getPlayers()) {
+                DropMappingState.scanInventoryForDiscoveries(server, player);
+            }
         });
     }
 

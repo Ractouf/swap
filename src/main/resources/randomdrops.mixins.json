@@ -6,10 +6,8 @@
 		"AbstractFurnaceBlockEntityMixin",
 		"BrewingStandMixin",
 		"CraftingMenuMixin",
-		"FurnaceResultSlotMixin",
 		"ItemFrameMixin",
 		"ItemPickupMixin",
-		"ResultSlotMixin",
 		"VehicleEntityMixin"
 	],
 	"client": [
