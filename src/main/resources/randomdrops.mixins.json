@@ -5,6 +5,7 @@
 	"mixins": [
 		"AbstractFurnaceBlockEntityMixin",
 		"BrewingStandMixin",
+		"ContainerClickMixin",
 		"CraftingMenuMixin",
 		"ItemFrameMixin",
 		"ItemPickupMixin",
