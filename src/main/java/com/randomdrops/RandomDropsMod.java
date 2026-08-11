@@ -55,7 +55,6 @@ public class RandomDropsMod implements ModInitializer {
 
     @Override
     public void onInitialize() {
-        DropMappingGenerator.init();
         RecipeMappingGenerator.init();
         DropHook.register();
         QueryCommand.register();
@@ -70,9 +69,9 @@ public class RandomDropsMod implements ModInitializer {
             )
         );
 
-        // Mob-drop discovery requires reading loot table resources, only available once the server starts.
+        // Drop-pool discovery requires reading loot table resources, only available once the server starts.
         ServerLifecycleEvents.SERVER_STARTING.register(server -> {
-            DropMappingGenerator.loadMobDrops(server);
+            DropMappingGenerator.loadDrops(server);
             LOGGER.info("RandomDrops initialised ({} items in pool).", DropMappingGenerator.getItemPool().size());
         });
 

@@ -61,10 +61,6 @@ public final class DropMappingGenerator {
     private static List<Item> SOURCE_POOL = null;
     private static Map<Item, Integer> SOURCE_INDEX = null;
 
-    // Block-derived sources, gathered by init() and held here until loadMobDrops()
-    // merges in the mob-derived sources and freezes SOURCE_POOL/SOURCE_INDEX.
-    private static Set<Item> pendingSources = null;
-
     // Permutation cache — recomputed only when the world seed changes.
     private static long cachedSeed = Long.MIN_VALUE;
     private static List<Item> cachedPermutation = null;
@@ -72,50 +68,30 @@ public final class DropMappingGenerator {
 
     private DropMappingGenerator() {}
 
-    /** Call once from ModInitializer after registries are frozen. Gathers block-derived sources only —
-     *  call loadMobDrops(server) once a server is available to complete the pool. */
-    public static void init() {
-        Set<Item> sources = new LinkedHashSet<>();
-
-        // Block loot-table drops
-        for (Block block : BuiltInRegistries.BLOCK) {
-            if (block.getLootTable().isEmpty()) continue;
-            Identifier blockId = BuiltInRegistries.BLOCK.getKey(block);
-            if (blockId == null) continue;
-            String path = normalizePath(blockId.getPath());
-            Identifier normalizedId = path.equals(blockId.getPath())
-                ? blockId : Identifier.fromNamespaceAndPath(blockId.getNamespace(), path);
-            Item item = BuiltInRegistries.ITEM.getValue(normalizedId);
-            if (item != null && item != Items.AIR && !EXCLUDED.contains(item)) {
-                sources.add(item);
-            }
-        }
-
-        pendingSources = sources;
-    }
-
     /**
-     * Scans every entity type's actual loot table (recursively, including tag and nested-table
-     * entries) to discover real mob-drop items, then merges them with the block-derived sources
-     * from init() and freezes SOURCE_POOL/SOURCE_INDEX. Call once a server (and its resources) is
-     * available, e.g. from ServerLifecycleEvents.SERVER_STARTING.
+     * Scans every block's and entity type's actual loot table (recursively, including tag and
+     * nested-table entries) to discover every real drop item — not just a block/entity's own
+     * name, but every alternate and bonus drop (e.g. gravel's flint, grass's wheat seeds) —
+     * then freezes SOURCE_POOL/SOURCE_INDEX. Requires a running server for resource access, so
+     * call this from ServerLifecycleEvents.SERVER_STARTING rather than ModInitializer.
      */
-    public static void loadMobDrops(MinecraftServer server) {
-        if (pendingSources == null) throw new IllegalStateException("DropMappingGenerator.init() not called");
+    public static void loadDrops(MinecraftServer server) {
+        if (SOURCE_POOL != null) return; // already built; pool is static across server (re)starts in a session
 
         ResourceManager resources = server.getResourceManager();
         Set<Identifier> visited = new HashSet<>();
-        Set<Item> mobItems = new LinkedHashSet<>();
+        Set<Item> sources = new LinkedHashSet<>();
+
+        for (Block block : BuiltInRegistries.BLOCK) {
+            Optional<ResourceKey<LootTable>> lootTable = block.getLootTable();
+            if (lootTable.isEmpty()) continue;
+            collectLootTableItems(resources, lootTable.get().identifier(), visited, sources);
+        }
 
         for (EntityType<?> type : BuiltInRegistries.ENTITY_TYPE) {
             Optional<ResourceKey<LootTable>> lootTable = type.getDefaultLootTable();
             if (lootTable.isEmpty()) continue;
-            collectLootTableItems(resources, lootTable.get().identifier(), visited, mobItems);
-        }
-
-        Set<Item> sources = pendingSources;
-        for (Item item : mobItems) {
-            if (item != null && item != Items.AIR && !EXCLUDED.contains(item)) sources.add(item);
+            collectLootTableItems(resources, lootTable.get().identifier(), visited, sources);
         }
 
         SOURCE_POOL = Collections.unmodifiableList(new ArrayList<>(sources));
@@ -123,7 +99,6 @@ public final class DropMappingGenerator {
         for (int i = 0; i < SOURCE_POOL.size(); i++) {
             SOURCE_INDEX.put(SOURCE_POOL.get(i), i);
         }
-        pendingSources = null;
     }
 
     /** Recursively reads a loot table's JSON and collects every item it can produce (item entries,
@@ -158,14 +133,15 @@ public final class DropMappingGenerator {
         if ("minecraft:item".equals(type) && obj.has("name")) {
             Identifier itemId = Identifier.tryParse(obj.get("name").getAsString());
             Item item = itemId == null ? null : BuiltInRegistries.ITEM.getValue(itemId);
-            if (item != null) out.add(item);
+            if (item != null && item != Items.AIR && !EXCLUDED.contains(item)) out.add(item);
         } else if ("minecraft:tag".equals(type) && obj.has("name")) {
             String tagStr = obj.get("name").getAsString();
             Identifier tagId = Identifier.tryParse(tagStr.startsWith("#") ? tagStr.substring(1) : tagStr);
             if (tagId != null) {
                 TagKey<Item> tagKey = TagKey.create(Registries.ITEM, tagId);
                 for (var holder : BuiltInRegistries.ITEM.getTagOrEmpty(tagKey)) {
-                    out.add(holder.value());
+                    Item item = holder.value();
+                    if (item != Items.AIR && !EXCLUDED.contains(item)) out.add(item);
                 }
             }
         } else if ("minecraft:loot_table".equals(type) && obj.has("value")) {
@@ -190,7 +166,7 @@ public final class DropMappingGenerator {
      * Returns the original item unchanged if it is not in the pool.
      */
     public static Item getItem(long worldSeed, Identifier droppedItemId) {
-        if (SOURCE_POOL == null) throw new IllegalStateException("DropMappingGenerator.init() not called");
+        if (SOURCE_POOL == null) throw new IllegalStateException("DropMappingGenerator.loadDrops() not called");
         Item droppedItem = BuiltInRegistries.ITEM.getValue(droppedItemId);
         Integer idx = SOURCE_INDEX.get(droppedItem);
         if (idx == null) return droppedItem;
@@ -199,13 +175,13 @@ public final class DropMappingGenerator {
 
     /** Returns the unique source item that maps to {@code target} in this world, or null if none. */
     public static Item getSource(long worldSeed, Item target) {
-        if (SOURCE_POOL == null) throw new IllegalStateException("DropMappingGenerator.init() not called");
+        if (SOURCE_POOL == null) throw new IllegalStateException("DropMappingGenerator.loadDrops() not called");
         ensurePermutation(worldSeed);
         return cachedInverse.get(target);
     }
 
     public static List<Item> getItemPool() {
-        if (SOURCE_POOL == null) throw new IllegalStateException("DropMappingGenerator.init() not called");
+        if (SOURCE_POOL == null) throw new IllegalStateException("DropMappingGenerator.loadDrops() not called");
         return SOURCE_POOL;
     }
 
