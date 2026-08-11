@@ -30,10 +30,8 @@ public class DiscoveryScreen extends Screen {
     private static final int TAB_Y     = 4;
     private static final int TAB_H     = 26;
     private static final int TAB_W     = 100;
-    private static final int SEARCH_Y  = TAB_Y + TAB_H + 4;
     private static final int SEARCH_H  = 14;
     private static final int SEARCH_W  = 180;
-    private static final int HEADER_H  = SEARCH_Y + SEARCH_H + 6;
 
     // Missing panel layout
     private static final int MROW_H    = 18;
@@ -117,6 +115,9 @@ public class DiscoveryScreen extends Screen {
     private String           searchText    = "";
     private boolean          searchFocused = false;
     private int              searchX;
+    private int              searchY;
+    private int              headerH;
+    private boolean          showTabBar;
     private List<Identifier> searchMatches = new ArrayList<>();
     private int              matchIndex    = 0;
     private boolean          initialPanDone = false;
@@ -174,6 +175,9 @@ public class DiscoveryScreen extends Screen {
     @Override
     protected void init() {
         searchX = width / 2 - SEARCH_W / 2;
+        showTabBar = visibleTabs().size() > 1;
+        searchY = showTabBar ? TAB_Y + TAB_H + 4 : TAB_Y;
+        headerH = searchY + SEARCH_H + 6;
         rebuildLayout();
         if (!initialPanDone && !nodePos.isEmpty()) {
             initialPanDone = true;
@@ -241,7 +245,7 @@ public class DiscoveryScreen extends Screen {
         float[] pos = nodePos.get(id);
         if (pos == null) return;
         panX = -pos[0];
-        panY = (height - HEADER_H) / 2f - pos[1];
+        panY = (height - headerH) / 2f - pos[1];
     }
 
     private void rebuildDropLayout() {
@@ -427,21 +431,21 @@ public class DiscoveryScreen extends Screen {
             renderGraph(g, mx, my);
         }
 
-        g.fill(0, 0, width, SEARCH_Y, C_BG);
-        drawTabBar(g, mx, my);
+        g.fill(0, 0, width, searchY, C_BG);
+        if (showTabBar) drawTabBar(g, mx, my);
         drawSearchBar(g);
     }
 
     private void renderGraph(GuiGraphicsExtractor g, int mx, int my) {
         int originX = width / 2 + (int) panX;
-        int originY = HEADER_H + (int) panY;
+        int originY = headerH + (int) panY;
 
         hovNode = null;
-        if (my >= HEADER_H) {
+        if (my >= headerH) {
             int cmx = mx - originX, cmy = my - originY;
             int half = NODE_SIZE / 2;
             int gLeft = -originX - half, gRight = width - originX + half;
-            int gTop  = HEADER_H - originY - half, gBottom = height - originY + half;
+            int gTop  = headerH - originY - half, gBottom = height - originY + half;
             for (var e : nodePos.entrySet()) {
                 float[] p = e.getValue();
                 if (p[0] < gLeft || p[0] > gRight || p[1] < gTop || p[1] > gBottom) continue;
@@ -467,7 +471,7 @@ public class DiscoveryScreen extends Screen {
                 if (to == null) continue;
                 int tx = originX + (int)to[0], ty = originY + (int)to[1];
                 if (Math.max(fx, tx) < 0 || Math.min(fx, tx) > width)  continue;
-                if (Math.max(fy, ty) < HEADER_H || Math.min(fy, ty) > height) continue;
+                if (Math.max(fy, ty) < headerH || Math.min(fy, ty) > height) continue;
                 drawEdge(g, fx, fy, tx, ty, C_EDGE, C_ARROW);
             }
         }
@@ -499,7 +503,7 @@ public class DiscoveryScreen extends Screen {
             int sx = originX + (int)e.getValue()[0];
             int sy = originY + (int)e.getValue()[1];
             if (sx + half < 0 || sx - half > width)   continue;
-            if (sy + half < HEADER_H || sy - half > height) continue;
+            if (sy + half < headerH || sy - half > height) continue;
             boolean vis = visible.contains(id);
             boolean hov = id.equals(hovNode);
             drawNode(g, iconFor(id), sx, sy, hov, vis);
@@ -520,7 +524,7 @@ public class DiscoveryScreen extends Screen {
     private void renderMissingPanel(GuiGraphicsExtractor g, int mx, int my) {
         if (missingGroups == null) buildMissingGroups();
 
-        int y = HEADER_H - missingScrollY;
+        int y = headerH - missingScrollY;
         int totalH = 0;
         boolean anyVisible = false;
 
@@ -539,12 +543,12 @@ public class DiscoveryScreen extends Screen {
             boolean collapsed = collapsedGroups.contains(gi);
 
             // Group header
-            if (y + MHDR_H > HEADER_H && y < height) {
-                g.fill(0, Math.max(y, HEADER_H), width, Math.min(y + MHDR_H, height), C_GROUP_HDR);
+            if (y + MHDR_H > headerH && y < height) {
+                g.fill(0, Math.max(y, headerH), width, Math.min(y + MHDR_H, height), C_GROUP_HDR);
                 String arrow = collapsed ? "▶" : "▼";
                 String label = arrow + " " + group.tabName() + " (" + filtered.size() + " missing)";
                 int textY = y + (MHDR_H - 7) / 2;
-                if (textY >= HEADER_H)
+                if (textY >= headerH)
                     g.text(font, Component.literal(label), 6, textY, 0xFFCCCCCC);
             }
             y += MHDR_H;
@@ -552,15 +556,15 @@ public class DiscoveryScreen extends Screen {
 
             if (!collapsed) {
                 for (MissingEntry entry : filtered) {
-                    if (y + MROW_H > HEADER_H && y < height) {
-                        boolean hovered = my >= Math.max(y, HEADER_H) && my < y + MROW_H;
+                    if (y + MROW_H > headerH && y < height) {
+                        boolean hovered = my >= Math.max(y, headerH) && my < y + MROW_H;
                         int iconY = y + (MROW_H - ICON_SIZE) / 2;
                         Item item = itemForMissing(entry.type(), entry.id());
-                        if (iconY >= HEADER_H - ICON_SIZE)
+                        if (iconY >= headerH - ICON_SIZE)
                             g.item(new ItemStack(item), MINDENT, iconY);
                         int textY = y + (MROW_H - 7) / 2;
                         int textColor = hovered ? 0xFFFFFFFF : 0xFF999999;
-                        if (textY >= HEADER_H)
+                        if (textY >= headerH)
                             g.text(font, Component.literal(new ItemStack(item).getHoverName().getString()),
                                 MINDENT + ICON_SIZE + 4, textY, textColor);
                         if (hovered) {
@@ -582,7 +586,7 @@ public class DiscoveryScreen extends Screen {
         }
 
         // Clamp scroll to content
-        int maxScroll = Math.max(0, totalH - (height - HEADER_H));
+        int maxScroll = Math.max(0, totalH - (height - headerH));
         if (missingScrollY > maxScroll) missingScrollY = maxScroll;
     }
 
@@ -785,19 +789,19 @@ public class DiscoveryScreen extends Screen {
 
     private void drawSearchBar(GuiGraphicsExtractor g) {
         int bd = searchFocused ? C_SEARCH_FOCUS : C_SEARCH_BORDER;
-        g.fill(searchX, SEARCH_Y, searchX + SEARCH_W, SEARCH_Y + SEARCH_H, C_SEARCH_BG);
-        g.fill(searchX,              SEARCH_Y,              searchX + SEARCH_W, SEARCH_Y + 1,             bd);
-        g.fill(searchX,              SEARCH_Y + SEARCH_H - 1, searchX + SEARCH_W, SEARCH_Y + SEARCH_H,   bd);
-        g.fill(searchX,              SEARCH_Y,              searchX + 1,        SEARCH_Y + SEARCH_H,      bd);
-        g.fill(searchX + SEARCH_W - 1, SEARCH_Y,           searchX + SEARCH_W, SEARCH_Y + SEARCH_H,      bd);
+        g.fill(searchX, searchY, searchX + SEARCH_W, searchY + SEARCH_H, C_SEARCH_BG);
+        g.fill(searchX,              searchY,              searchX + SEARCH_W, searchY + 1,             bd);
+        g.fill(searchX,              searchY + SEARCH_H - 1, searchX + SEARCH_W, searchY + SEARCH_H,   bd);
+        g.fill(searchX,              searchY,              searchX + 1,        searchY + SEARCH_H,      bd);
+        g.fill(searchX + SEARCH_W - 1, searchY,           searchX + SEARCH_W, searchY + SEARCH_H,      bd);
         String display = searchText.isEmpty() && !searchFocused ? "Search..." : searchText + (searchFocused ? "_" : "");
         int tc = searchText.isEmpty() && !searchFocused ? 0xFF555577 : 0xFFCCCCCC;
-        g.text(font, Component.literal(display), searchX + 4, SEARCH_Y + (SEARCH_H - 7) / 2, tc);
+        g.text(font, Component.literal(display), searchX + 4, searchY + (SEARCH_H - 7) / 2, tc);
         if (!searchMatches.isEmpty()) {
             String counter = (matchIndex + 1) + " / " + searchMatches.size();
             int cw = font.width(counter);
             g.text(font, Component.literal(counter),
-                searchX + SEARCH_W - cw - 4, SEARCH_Y + (SEARCH_H - 7) / 2, 0xFF8888bb);
+                searchX + SEARCH_W - cw - 4, searchY + (SEARCH_H - 7) / 2, 0xFF8888bb);
         }
     }
 
@@ -897,28 +901,30 @@ public class DiscoveryScreen extends Screen {
     public boolean mouseClicked(MouseButtonEvent event, boolean wasDragging) {
         int mx = (int) event.x(), my = (int) event.y();
         if (event.button() == 0) {
-            // Tab bar
-            List<Tab> tabs = visibleTabs();
-            int x0 = width / 2 - tabs.size() * TAB_W / 2;
-            for (int i = 0; i < tabs.size(); i++) {
-                Tab tab = tabs.get(i);
-                int tx = x0 + i * TAB_W;
-                if (mx >= tx && mx < tx + TAB_W && my >= TAB_Y && my < TAB_Y + TAB_H) {
-                    if (tab != currentTab) {
-                        currentTab = tab; panX = panY = 0;
-                        searchMatches.clear(); matchIndex = 0;
-                        rebuildLayout();
-                        if (!searchText.isEmpty()) {
-                            updateSearchMatches();
-                            if (currentTab == Tab.MISSING) updateMissingCollapse();
+            // Tab bar (only clickable when shown — i.e. more than one tab is visible)
+            if (showTabBar) {
+                List<Tab> tabs = visibleTabs();
+                int x0 = width / 2 - tabs.size() * TAB_W / 2;
+                for (int i = 0; i < tabs.size(); i++) {
+                    Tab tab = tabs.get(i);
+                    int tx = x0 + i * TAB_W;
+                    if (mx >= tx && mx < tx + TAB_W && my >= TAB_Y && my < TAB_Y + TAB_H) {
+                        if (tab != currentTab) {
+                            currentTab = tab; panX = panY = 0;
+                            searchMatches.clear(); matchIndex = 0;
+                            rebuildLayout();
+                            if (!searchText.isEmpty()) {
+                                updateSearchMatches();
+                                if (currentTab == Tab.MISSING) updateMissingCollapse();
+                            }
                         }
+                        searchFocused = false; return true;
                     }
-                    searchFocused = false; return true;
                 }
             }
 
-            if (currentTab == Tab.MISSING && missingGroups != null && my >= HEADER_H) {
-                int y = HEADER_H - missingScrollY;
+            if (currentTab == Tab.MISSING && missingGroups != null && my >= headerH) {
+                int y = headerH - missingScrollY;
                 for (int gi = 0; gi < missingGroups.size(); gi++) {
                     MissingGroup group = missingGroups.get(gi);
                     // Mirror the render filter exactly so y positions match
@@ -942,7 +948,7 @@ public class DiscoveryScreen extends Screen {
 
             // Search box
             boolean inSearch = mx >= searchX && mx < searchX + SEARCH_W
-                && my >= SEARCH_Y && my < SEARCH_Y + SEARCH_H;
+                && my >= searchY && my < searchY + SEARCH_H;
             searchFocused = inSearch;
             if (inSearch) return true;
 
