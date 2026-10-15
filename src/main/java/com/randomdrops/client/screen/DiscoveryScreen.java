@@ -347,16 +347,21 @@ public class DiscoveryScreen extends Screen {
         }
         for (Identifier n : comp) if (!seen.contains(n)) topo.add(n);
 
-        Map<Identifier, Integer> depth = new HashMap<>();
-        for (Identifier n : comp) depth.put(n, 0);
-        for (Identifier n : topo) {
-            int d = depth.get(n);
+        // Column = distance from the farthest thing this node can reach, not distance from its own
+        // root. Otherwise a short chain feeding into a target shared with a much longer chain gets
+        // stranded near column 0, and its edge has to span across the longer chain's own columns.
+        Map<Identifier, Integer> height = new HashMap<>();
+        for (Identifier n : comp) height.put(n, 0);
+        for (int i = topo.size() - 1; i >= 0; i--) {
+            Identifier n = topo.get(i);
             Set<Identifier> ch = edges.get(n);
             if (ch != null) for (Identifier c : ch)
-                if (comp.contains(c)) depth.merge(c, d + 1, Math::max);
+                if (comp.contains(c)) height.merge(n, height.get(c) + 1, Math::max);
         }
 
-        int maxDepth = depth.values().stream().mapToInt(Integer::intValue).max().orElse(0);
+        int maxDepth = height.values().stream().mapToInt(Integer::intValue).max().orElse(0);
+        Map<Identifier, Integer> depth = new HashMap<>();
+        for (Identifier n : comp) depth.put(n, maxDepth - height.get(n));
         List<List<Identifier>> cols = new ArrayList<>();
         for (int i = 0; i <= maxDepth; i++) cols.add(new ArrayList<>());
         for (Identifier n : comp) cols.get(depth.get(n)).add(n);
